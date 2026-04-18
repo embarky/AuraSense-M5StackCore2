@@ -1,0 +1,9 @@
+# --- Frontend UI Framework ---
+streamlit==1.32.0
+
+# --- Data Processing & Cloud Connectivity ---
+pandas==2.2.1
+google-cloud-bigquery==3.19.0
+
+# --- Required backend for BigQuery to Pandas conversion ---
+db-dtypes==1.2.0

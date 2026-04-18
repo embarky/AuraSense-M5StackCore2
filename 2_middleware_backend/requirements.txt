@@ -1,0 +1,5 @@
+# --- Web Server Framework ---
+Flask==3.0.0
+
+# --- Google Cloud Connectivity ---
+google-cloud-bigquery==3.19.0
