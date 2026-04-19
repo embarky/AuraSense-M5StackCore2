@@ -14,6 +14,7 @@ from m5stack import lcd, btnA, btnB
 # ==========================================
 CONFIG_FILE = "config.json"
 AP_SSID = "M5Stack_Smart_Setup"
+# TODO: Update this to your Mac's current local IP address
 API_URL = "http://10.145.83.153:5001/api/sensor_data" 
 
 COLOR_BG = 0x000000
@@ -46,6 +47,7 @@ class SGP30_Driver:
         tvoc = (data[3] << 8) | data[4]
         return tvoc, eco2
 
+# Initialize LCD Framework
 lcd.clear(COLOR_BG)
 lcd.font(lcd.FONT_DejaVu18)
 lcd.print("Smart Space Node", 70, 5, COLOR_TITLE)
@@ -80,6 +82,7 @@ def boot_manager():
     
     force_setup = False
     
+    # 3-Second Countdown Loop
     for i in range(30):
         if i % 10 == 0:
             seconds_left = 3 - (i // 10)
@@ -152,11 +155,13 @@ def start_smart_config():
     html_p2 = """<option value="Manual_Input">-- Other (Manual Input) --</option></select><div style="text-align:left;color:#666;font-size:14px;">Password:</div><input type="password" name="pwd" placeholder="Enter password"><input type="submit" value="Connect Device"></form></div></body></html>"""
     html = html_p1 + ssid_options + html_p2
 
+    # DNS Server for Captive Portal (Port 53)
     dns_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     dns_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     dns_s.bind(('', 53))
     dns_s.setblocking(False)
 
+    # Web Server (Port 80)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('', 80))
@@ -210,7 +215,7 @@ def start_smart_config():
             pass
 
 def connect_network(force_setup=False):
-    """Network logic. Can be forced into Setup Mode."""
+    """Network logic. Can be forced into Setup Mode by user."""
     lcd.fillRect(0, 31, 320, 209, COLOR_BG)
     
     if force_setup:
@@ -242,6 +247,7 @@ def connect_network(force_setup=False):
     time.sleep(1)
 
 def clear_line(y, height=22):
+    """Utility function to clear specific horizontal sections of the LCD."""
     lcd.fillRect(10, y, 300, height, COLOR_BG)
 
 # ==========================================
@@ -251,7 +257,7 @@ def clear_line(y, height=22):
 # 1. Show Boot Menu (Returns True if user presses Btn B)
 force_wifi_setup = boot_manager()
 
-# 2. Handle Network (Pass the boolean flag)
+# 2. Handle Network connection
 connect_network(force_setup=force_wifi_setup)
 
 # 3. Draw main UI framework
@@ -269,7 +275,7 @@ while True:
     except Exception as e:
         t, h, p, v, c, motion = 0.0, 0.0, 0.0, 0, 0, 0
 
-    # --- UI Rendering ---
+    # --- UI Rendering (Indoor Data) ---
     clear_line(40)
     lcd.print("Temp: " + str(round(t, 1)) + " C", 10, 40, COLOR_TEXT)
     clear_line(65)
@@ -286,7 +292,7 @@ while True:
     else:
         lcd.print("Area Status: Clear", 10, 170, COLOR_OK)
 
-    # --- Cloud Transmission ---
+    # --- Cloud Transmission & Data Loop-back ---
     if sta.isconnected():
         try:
             payload = {
@@ -299,12 +305,30 @@ while True:
             }
             headers = {'Content-Type': 'application/json'}
             res = urequests.post(API_URL, json=payload, headers=headers)
+            
+            # --- NEW: Parse Cloud Response for Outdoor Weather ---
+            try:
+                cloud_data = res.json()
+                out_temp = cloud_data.get("outdoor_temp", "--")
+                out_desc = cloud_data.get("outdoor_desc", "--")
+                
+                # Render Outdoor Weather at the bottom of the screen
+                clear_line(200, 30)
+                weather_str = "Out: " + str(out_temp) + " C | " + str(out_desc)
+                lcd.print(weather_str, 10, 200, COLOR_VAL_1)
+            except Exception as parse_e:
+                print("Failed to parse cloud response:", parse_e)
+
+            # Transmission Indicator: Green
             lcd.circle(310, 15, 5, COLOR_OK) 
             res.close()
         except Exception as e:
+            # Transmission Indicator: Red (API Error)
             lcd.circle(310, 15, 5, COLOR_ERR)
             print("HTTP POST Failed:", e)
     else:
+        # Transmission Indicator: Yellow (Wi-Fi Disconnected)
         lcd.circle(310, 15, 5, COLOR_TITLE)
     
+    # Wait 5 seconds before the next cycle
     time.sleep(5)
