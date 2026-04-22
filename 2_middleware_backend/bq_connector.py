@@ -1,7 +1,7 @@
 # bq_connector.py
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
@@ -28,17 +28,18 @@ class BigQueryConnector:
     def insert_sensor_data(self, data_dict):
         """
         Inserts a single row of formatted sensor data into BigQuery.
-        Dynamically generates a UTC timestamp if the edge device hasn't provided one.
+        Dynamically generates a strict UTC timestamp formatted for BigQuery.
         """
-        # Inject standard UTC timestamp if missing (Format optimized for BigQuery)
+        # Inject standard timezone-aware UTC timestamp with microseconds 
+        # (Resolves the 'datetime.utcnow() is deprecated' warning)
         if 'timestamp' not in data_dict:
-            data_dict['timestamp'] = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+            data_dict['timestamp'] = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S.%f')
 
-        # Prepare the payload array
+        # Prepare the payload array for BigQuery streaming API
         rows_to_insert = [data_dict]
 
-        # Stream the payload into the Google Cloud database
         try:
+            # Use insert_rows_json for low-latency real-time streaming
             errors = self.client.insert_rows_json(self.table_ref, rows_to_insert)
             if not errors:
                 return True, "Data streamed successfully"
