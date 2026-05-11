@@ -1,5 +1,8 @@
-# --- Web Server Framework ---
-Flask==3.0.0
-
-# --- Google Cloud Connectivity ---
-google-cloud-bigquery==3.19.0
+# requirements.txt
+flask>=3.0
+google-genai>=1.0
+google-cloud-bigquery>=3.0
+edge-tts>=7.0
+pydub>=0.25
+requests>=2.31
+gunicorn>=21.0          # production WSGI server
