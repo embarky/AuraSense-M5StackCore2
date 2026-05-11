@@ -1,0 +1,1 @@
+# pages/__init__.py — Required for MicroPython package imports.
