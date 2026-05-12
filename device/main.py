@@ -11,7 +11,7 @@ from M5 import *
 
 import config
 from sensors      import SensorHub
-from connectivity import (wifi_connect, is_connected, upload_sensor_data,
+from connectivity import (wifi_connect, sync_ntp, is_connected, upload_sensor_data,
                            record_while_held, upload_voice_and_receive,
                            play_wav_from_memory)
 from components   import (SCREEN_W, SCREEN_H, STATUS_H,
@@ -30,7 +30,7 @@ UPLOAD_INTERVAL = 5
 RETRY_INTERVAL  = 10
 LONG_PRESS_MS   = 600   # Threshold for switching to Settings
 
-# ── State ─────────────────────────────────────────────────────────────────────
+# ── Global State ──────────────────────────────────────────────────────────────
 _current_name = "Home"
 _pages       = {}
 _hub         = None
@@ -46,10 +46,12 @@ _last_draw   = 0
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _time_str():
+    """Returns the current local time (adjusted by NTP offset)."""
     try:
         t = time.localtime()
         return "{:02d}:{:02d}".format(t[3], t[4])
-    except: return "--:--"
+    except Exception: 
+        return "--:--"
 
 def _current_page():
     return _pages.get(_current_name)
@@ -61,7 +63,7 @@ def _go_to(name: str):
     current = _current_page()
     if current and hasattr(current, "on_exit"):
         try: current.on_exit()
-        except: pass
+        except Exception: pass
             
     _current_name = name
     page = _current_page()
@@ -90,7 +92,7 @@ def _do_voice():
     def _status_cb(msg, color):
         if "REC" in msg and "s" in msg:
             try: _rec_sec[0] = int(msg.strip().split()[-1].replace("s", ""))
-            except: pass
+            except Exception: pass
         update_rec_indicator(_rec_sec[0])
 
     ok = record_while_held(REC_WAV, is_btnc_pressed, _status_cb)
@@ -99,8 +101,10 @@ def _do_voice():
     if not ok: return
 
     if not is_connected():
-        draw_text(" No WiFi ", 90, 110, C_RED, C_BG, 2); time.sleep(1)
-        _current_page().on_enter(); return
+        draw_text(" No WiFi ", 90, 110, C_RED, C_BG, 2)
+        time.sleep(1)
+        _current_page().on_enter()
+        return
 
     draw_text("Uploading...", 75, 110, C_BLUE, C_BG, 2)
     audio = upload_voice_and_receive(REC_WAV)
@@ -111,7 +115,8 @@ def _do_voice():
         play_wav_from_memory(audio)
     else:
         _flask_ok = False
-        draw_text(" No reply  ", 80, 110, C_MUTED, C_BG, 2); time.sleep(1)
+        draw_text(" No reply  ", 80, 110, C_MUTED, C_BG, 2)
+        time.sleep(1)
 
     _current_page().on_enter()
 
@@ -136,7 +141,11 @@ def setup():
     _pages["Sensors"]  = SensorPage()
     _pages["Settings"] = SettingsPage()
 
-    wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1))
+    # 1. Connect WiFi
+    if wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)):
+        # 2. Sync Time via NTP (Swiss CEST: UTC+2)
+        sync_ntp(offset_hours=2)
+
     if _hub: _sensor_data = _hub.read_all()
     _go_to(_current_name)
 
@@ -221,6 +230,7 @@ def loop():
                 if result: _outdoor, _flask_ok = result, True
 
     time.sleep_ms(20)
+
 
 if __name__ == "__main__":
     try:
