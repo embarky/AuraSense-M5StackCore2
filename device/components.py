@@ -88,6 +88,7 @@ class SwipeDetector:
     Detect horizontal swipe gestures.
     Tracks start position on first touch, compares on release.
     Returns "left", "right", or None.
+    NOTE: M5.update() must be called in the main loop before using this.
     """
     SWIPE_MIN_X = 50   # minimum horizontal travel px
     SWIPE_MAX_Y = 50   # maximum vertical drift px
@@ -100,7 +101,6 @@ class SwipeDetector:
         self._cur_y     = 0
 
     def update(self) -> str | None:
-        M5.update()
         count = M5.Touch.getCount()
 
         if count > 0:
@@ -130,19 +130,15 @@ class SwipeDetector:
             return None
 
 
-# ── BtnC zone (bottom-right touch area on Core2) ─────────────────────────────
-# Core2 virtual buttons sit in the bottom strip (y >= 220).
-# BtnC is the rightmost third: x >= 214.
+# ── BtnC zone ─────────────────────────────────────────────────────────────────
 
 def is_btnc_pressed() -> bool:
-    """Return True if the BtnC touch zone is currently pressed."""
-    M5.update()
-    if M5.Touch.getCount() > 0:
-        try:
-            return M5.Touch.getX() >= 214 and M5.Touch.getY() >= 220
-        except Exception:
-            pass
-    return False
+    """
+    Return True if the physical/virtual BtnC is currently being held down.
+    Uses M5Unified native button mapping. 
+    NOTE: M5.update() must be called in the main loop before using this.
+    """
+    return M5.BtnC.isPressed()
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────

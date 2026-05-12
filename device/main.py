@@ -25,10 +25,10 @@ from pages.settings import SettingsPage
 
 # ── Constants (all in seconds) ────────────────────────────────────────────────
 REC_WAV         = "/flash/rec.wav"
-SENSOR_INTERVAL = 3     # read sensors every 3s, always, network-independent
-DRAW_INTERVAL   = 2     # refresh screen every 2s
-UPLOAD_INTERVAL = 5     # upload to backend every 5s when online
-RETRY_INTERVAL  = 10    # retry backend every 10s when offline
+SENSOR_INTERVAL = 3     # Read sensors every 3s, always, network-independent
+DRAW_INTERVAL   = 2     # Refresh screen every 2s
+UPLOAD_INTERVAL = 5     # Upload to backend every 5s when online
+RETRY_INTERVAL  = 10    # Retry backend every 10s when offline
 
 # ── State ─────────────────────────────────────────────────────────────────────
 _page_idx    = PAGES.index("Home")
@@ -66,11 +66,13 @@ def _go_to(idx):
             current.on_exit()
         except Exception as e:
             print("[Nav] on_exit:", e)
+            
     _page_idx = idx % len(PAGES)
     page = _current_page()
     if page:
         page.on_enter()
-    _last_draw = 0   # force immediate redraw after page switch
+        
+    _last_draw = 0   # Force immediate redraw after page switch
 
 
 # ── Voice assistant ───────────────────────────────────────────────────────────
@@ -149,7 +151,7 @@ def setup():
 
     # Initial sensor read so home page has data on first draw
     if _hub:
-        _sensor_data = _hub.read_all()   # initial read before first draw
+        _sensor_data = _hub.read_all()
 
     _go_to(_page_idx)
 
@@ -160,18 +162,22 @@ def loop():
     global _sensor_data, _outdoor, _flask_ok
     global _last_sensor, _last_upload, _last_retry, _last_draw
 
+    # Centralized hardware update: Synchronizes states for Touch, Buttons, etc.
+    M5.update()
+
     # ── BtnC zone: hold to record ─────────────────────────────────────────────
     if is_btnc_pressed():
         t0 = time.ticks_ms()
         while is_btnc_pressed():
-            M5.update()
+            # Must update hardware state inside the blocking loop
+            M5.update() 
             if time.ticks_diff(time.ticks_ms(), t0) >= config.HOLD_TO_REC_MS:
                 if PAGES[_page_idx] in ("Home", "Sensors"):
                     _do_voice()
                 return
-        return   # short tap → ignore
+        return   # Short tap ignored
 
-    # ── Swipe ─────────────────────────────────────────────────────────────────
+    # ── Swipe Navigation ──────────────────────────────────────────────────────
     direction = _swipe.update()
     if direction == "left":
         _go_to(_page_idx + 1)
