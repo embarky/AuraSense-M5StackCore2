@@ -15,10 +15,11 @@ import config
 
 # ── WiFi ──────────────────────────────────────────────────────────────────────
 
-def wifi_connect(status_cb=None) -> bool:
+def wifi_connect(status_cb=None):
     def _log(msg, color=0xFFFF00):
         print("[WiFi]", msg)
-        if status_cb: status_cb(msg, color)
+        if status_cb:
+            status_cb(msg, color)
 
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
@@ -28,7 +29,6 @@ def wifi_connect(status_cb=None) -> bool:
     if not config.WIFI_SSID:
         _log("No SSID configured", 0xFF0000)
         return False
-
     _log("Connecting to " + config.WIFI_SSID + "...")
     wlan.connect(config.WIFI_SSID, config.WIFI_PASSWORD)
     for _ in range(20):
@@ -40,13 +40,13 @@ def wifi_connect(status_cb=None) -> bool:
     return False
 
 
-def is_connected() -> bool:
+def is_connected():
     return network.WLAN(network.STA_IF).isconnected()
 
 
 # ── Sensor upload ─────────────────────────────────────────────────────────────
 
-def upload_sensor_data(sensor_data: dict):
+def upload_sensor_data(sensor_data):
     clean = {k: (v if v is not None else 0) for k, v in sensor_data.items()}
     try:
         payload = json.dumps(clean)
@@ -59,7 +59,6 @@ def upload_sensor_data(sensor_data: dict):
         if resp.status_code == 200:
             result = resp.json()
             resp.close()
-            # Sync RTC from backend
             utc = result.get("utc_time")
             if utc and len(utc) >= 7:
                 try:
@@ -95,9 +94,11 @@ def _merge_chunks(paths, out):
     pcm = b""
     for p in paths:
         try:
-            with open(p, "rb") as f: pcm += f.read()[44:]
+            with open(p, "rb") as f:
+                pcm += f.read()[44:]
             os.remove(p)
-        except Exception as e: print("[MERGE]", e)
+        except Exception as e:
+            print("[MERGE]", e)
     sr  = config.REC_RATE
     n   = len(pcm)
     hdr = (b"RIFF" + struct.pack('<I', 36 + n) + b"WAVEfmt "
@@ -105,58 +106,83 @@ def _merge_chunks(paths, out):
            + struct.pack('<II', sr, sr * 2) + struct.pack('<HH', 2, 16)
            + b"data" + struct.pack('<I', n))
     with open(out, "wb") as f:
-        f.write(hdr); f.write(pcm)
+        f.write(hdr)
+        f.write(pcm)
 
 
-def record_while_held(rec_path: str, status_cb=None) -> bool:
+def record_while_held(rec_path, held_check=None, status_cb=None):
+    """
+    Record in 1-second chunks while held_check() returns True.
+    held_check: callable() -> bool. Defaults to checking BtnC touch zone.
+    """
     import os
+
+    if held_check is None:
+        # Default: bottom-right touch area (BtnC zone)
+        held_check = lambda: (M5.Touch.getCount() > 0
+                              and M5.Touch.getX() >= 214
+                              and M5.Touch.getY() >= 220)
 
     def _log(msg, color=0xFF4444):
         print("[REC]", msg)
-        if status_cb: status_cb(msg, color)
+        if status_cb:
+            status_cb(msg, color)
 
-    Speaker.end(); time.sleep_ms(100)
+    Speaker.end()
+    time.sleep_ms(100)
     _axp_mic_on()
     Mic.begin()
-    try: Mic.setGain(config.MIC_GAIN)
-    except Exception: pass
+    try:
+        Mic.setGain(config.MIC_GAIN)
+    except Exception:
+        pass
 
-    chunks = []; total = 0
-    _log("REC..."); _vibrate(50)
+    chunks = []
+    total  = 0
+    _log("REC...")
+    _vibrate(50)
 
     while True:
         chunk = "/flash/chunk_%d.wav" % len(chunks)
         Mic.recordWavFile(chunk, config.REC_RATE, 1, False)
-        chunks.append(chunk); total += 1
+        chunks.append(chunk)
+        total += 1
         M5.update()
-        if not M5.BtnA.isPressed() or total >= config.MAX_REC_SECONDS:
+        if not held_check() or total >= config.MAX_REC_SECONDS:
             break
         _log("REC %ds" % total)
 
-    Mic.end(); _vibrate(50)
-    if not chunks: return False
+    Mic.end()
+    _vibrate(50)
 
+    if not chunks:
+        return False
     if len(chunks) == 1:
-        try: os.remove(rec_path)
-        except Exception: pass
+        try:
+            os.remove(rec_path)
+        except Exception:
+            pass
         os.rename(chunks[0], rec_path)
     else:
         _merge_chunks(chunks, rec_path)
-    print("[REC] %ds" % total)
+    print("[REC] %ds recorded" % total)
     return True
 
 
 # ── Voice upload + playback ───────────────────────────────────────────────────
 
-def upload_voice_and_receive(rec_path: str):
+def upload_voice_and_receive(rec_path):
     try:
-        with open(rec_path, "rb") as f: wav = f.read()
+        with open(rec_path, "rb") as f:
+            wav = f.read()
         print("[Voice] Uploading %d bytes" % len(wav))
         resp = requests.post(config.VOICE_URL, data=wav,
                              headers={"Content-Type": "audio/wav"})
         if resp.status_code == 204:
-            resp.close(); return None
-        audio = resp.content; resp.close()
+            resp.close()
+            return None
+        audio = resp.content
+        resp.close()
         print("[Voice] Received %d bytes" % len(audio))
         return audio
     except Exception as e:
@@ -164,14 +190,16 @@ def upload_voice_and_receive(rec_path: str):
         return None
 
 
-def play_wav_from_memory(wav_bytes: bytes) -> None:
+def play_wav_from_memory(wav_bytes):
     Speaker.begin()
     Speaker.setVolume(config.SPK_VOLUME)
     Speaker.playRaw(wav_bytes[44:], config.REC_RATE, False)
     try:
         while Speaker.isPlaying():
-            M5.update(); time.sleep_ms(50)
-    except Exception: pass
+            M5.update()
+            time.sleep_ms(50)
+    except Exception:
+        pass
 
 
 def _vibrate(ms=80, intensity=180):
@@ -179,4 +207,5 @@ def _vibrate(ms=80, intensity=180):
         M5.Power.setVibration(intensity)
         time.sleep_ms(ms)
         M5.Power.setVibration(0)
-    except Exception: pass
+    except Exception:
+        pass
