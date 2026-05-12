@@ -1,21 +1,22 @@
 """
 services/bigquery_service.py — Google BigQuery data layer.
 
-Handles all reads and writes for sensor telemetry.  The table schema is:
+Actual table: caa-project-493719.iot_data.sensor_logs
 
+Schema (matches what was created in BigQuery Console):
     timestamp       TIMESTAMP
-    temperature     FLOAT64      (°C, indoor)
-    humidity        FLOAT64      (%, indoor)
-    pressure        FLOAT64      (hPa, indoor)
-    eco2            INT64        (ppm)
-    tvoc            INT64        (ppb)
-    motion_detected BOOL
+    temperature     FLOAT
+    humidity        FLOAT
+    pressure        FLOAT
+    tvoc            INTEGER
+    eco2            INTEGER
+    motion_detected INTEGER   (0 or 1, not BOOLEAN)
     timezone        STRING
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from google.cloud import bigquery
@@ -27,24 +28,14 @@ class BigQueryService:
     """Thin wrapper around the BigQuery client for sensor data operations."""
 
     def __init__(self) -> None:
-        self._client  = bigquery.Client(project=Config.GCP_PROJECT)
-        self._table   = f"{Config.GCP_PROJECT}.{Config.BQ_DATASET}.{Config.BQ_TABLE}"
+        self._client = bigquery.Client(project=Config.GCP_PROJECT)
+        self._table  = f"{Config.GCP_PROJECT}.{Config.BQ_DATASET}.{Config.BQ_TABLE}"
         print(f"[BigQueryService] Connected — table: {self._table}")
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
     def insert_sensor_reading(self, payload: dict) -> tuple[bool, str]:
-        """
-        Insert one row of sensor data.
-
-        Parameters
-        ----------
-        payload:  Dict with keys matching the table schema above.
-
-        Returns
-        -------
-        (success, message)
-        """
+        """Insert one row of sensor data. Returns (success, message)."""
         row = {
             "timestamp":       datetime.now(timezone.utc).isoformat(),
             "temperature":     payload.get("temperature"),
@@ -52,7 +43,8 @@ class BigQueryService:
             "pressure":        payload.get("pressure"),
             "eco2":            payload.get("eco2"),
             "tvoc":            payload.get("tvoc"),
-            "motion_detected": payload.get("motion_detected", False),
+            # motion_detected is INTEGER in this table (not BOOLEAN)
+            "motion_detected": int(bool(payload.get("motion_detected", 0))),
             "timezone":        payload.get("timezone", "UTC"),
         }
         errors = self._client.insert_rows_json(self._table, [row])
@@ -90,8 +82,8 @@ class BigQueryService:
     def get_recent_summary(self, hours: int = 24) -> str:
         """
         Build a compact human-readable summary of recent sensor readings.
-        This string is injected into the voice-assistant system prompt so
-        Gemini can answer questions like "what was the humidity yesterday?".
+        Injected into the voice-assistant system prompt so Gemini can answer
+        questions like 'what was the humidity yesterday?'.
         """
         rows = self.get_history(hours)
         if not rows:
@@ -104,12 +96,12 @@ class BigQueryService:
 
         parts = [
             f"Latest reading ({hours}h window):",
-            f"  Temp    : {latest.get('temperature', 'N/A')} °C "
-            f"(min {min(temps):.1f}, max {max(temps):.1f})" if temps else "",
-            f"  Humidity: {latest.get('humidity', 'N/A')} % "
-            f"(min {min(hums):.1f}, max {max(hums):.1f})" if hums else "",
-            f"  eCO₂    : {latest.get('eco2', 'N/A')} ppm "
-            f"(max {max(eco2s)})" if eco2s else "",
+            (f"  Temp    : {latest.get('temperature', 'N/A')} °C "
+             f"(min {min(temps):.1f}, max {max(temps):.1f})") if temps else "",
+            (f"  Humidity: {latest.get('humidity', 'N/A')} % "
+             f"(min {min(hums):.1f}, max {max(hums):.1f})") if hums else "",
+            (f"  eCO2    : {latest.get('eco2', 'N/A')} ppm "
+             f"(max {max(eco2s)})") if eco2s else "",
             f"  TVOC    : {latest.get('tvoc', 'N/A')} ppb",
             f"  Pressure: {latest.get('pressure', 'N/A')} hPa",
         ]
