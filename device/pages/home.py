@@ -27,12 +27,13 @@ class HomePage:
     def __init__(self):
         self._data    = {}
         self._outdoor = {}
+        self._time    = "--:--"
         self._wifi    = False
-        self._flask   = True
+        self._flask   = False
 
     def on_enter(self) -> None:
         M5.Display.fillScreen(C_BG)
-        draw_status_bar(wifi=self._wifi, flask_ok=self._flask)
+        draw_status_bar(self._time, self._wifi, self._flask)
         self._draw_dividers()
         self._draw_data()
 
@@ -40,6 +41,7 @@ class HomePage:
                time_str: str, wifi_ok: bool, flask_ok: bool) -> None:
         self._data    = sensor_data
         self._outdoor = outdoor
+        self._time    = time_str
         self._wifi    = wifi_ok
         self._flask   = flask_ok
         draw_status_bar(time_str, wifi_ok, flask_ok)
