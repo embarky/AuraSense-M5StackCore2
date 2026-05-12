@@ -1,4 +1,10 @@
 # main.py — Smart Space entry point (UIFlow2).
+#
+# Interaction:
+#   Hold BtnC zone (bottom-right touch area) → voice assistant
+#   Swipe left / right                       → change page
+#
+# Timing: all intervals use time.time() (seconds) for consistency.
 
 import time
 import M5
@@ -14,12 +20,15 @@ from components   import (SCREEN_W, SCREEN_H, STATUS_H,
                            PAGES, SwipeDetector, is_btnc_pressed,
                            draw_status_bar, update_rec_indicator, draw_text)
 from pages.home     import HomePage
+from pages.sensor   import SensorPage
 from pages.settings import SettingsPage
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-REC_WAV        = "/flash/rec.wav"
-DRAW_INTERVAL  = 2000
-RETRY_INTERVAL = 10
+# ── Constants (all in seconds) ────────────────────────────────────────────────
+REC_WAV         = "/flash/rec.wav"
+SENSOR_INTERVAL = 3     # read sensors every 3s, always, network-independent
+DRAW_INTERVAL   = 2     # refresh screen every 2s
+UPLOAD_INTERVAL = 5     # upload to backend every 5s when online
+RETRY_INTERVAL  = 10    # retry backend every 10s when offline
 
 # ── State ─────────────────────────────────────────────────────────────────────
 _page_idx    = PAGES.index("Home")
@@ -28,11 +37,14 @@ _hub         = None
 _sensor_data = {}
 _outdoor     = {}
 _flask_ok    = False
+_last_sensor = 0
 _last_upload = 0
 _last_retry  = 0
 _last_draw   = 0
 _swipe       = SwipeDetector()
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _time_str():
     try:
@@ -48,7 +60,6 @@ def _current_page():
 
 def _go_to(idx):
     global _page_idx, _last_draw
-    # Notify current page it's being left
     current = _current_page()
     if current and hasattr(current, "on_exit"):
         try:
@@ -59,7 +70,7 @@ def _go_to(idx):
     page = _current_page()
     if page:
         page.on_enter()
-    _last_draw = 0   # force immediate refresh on next loop
+    _last_draw = 0   # force immediate redraw after page switch
 
 
 # ── Voice assistant ───────────────────────────────────────────────────────────
@@ -77,9 +88,7 @@ def _do_voice():
                 pass
         update_rec_indicator(_rec_sec[0])
 
-    # Pass held_check as positional arg to avoid keyword mismatch on old firmware
     ok = record_while_held(REC_WAV, is_btnc_pressed, _status_cb)
-
     update_rec_indicator(0)
 
     if not ok:
@@ -115,7 +124,7 @@ def _do_voice():
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 def setup():
-    global _hub, _pages
+    global _hub, _pages, _sensor_data
 
     M5.begin()
     Speaker.begin()
@@ -131,11 +140,16 @@ def setup():
         print("[Setup] SensorHub:", e)
 
     _pages["Home"]     = HomePage()
+    _pages["Sensors"]  = SensorPage()
     _pages["Settings"] = SettingsPage()
 
     wifi_connect(
         status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)
     )
+
+    # Initial sensor read so home page has data on first draw
+    if _hub:
+        _sensor_data = _hub.read_all()   # initial read before first draw
 
     _go_to(_page_idx)
 
@@ -144,7 +158,7 @@ def setup():
 
 def loop():
     global _sensor_data, _outdoor, _flask_ok
-    global _last_upload, _last_retry, _last_draw
+    global _last_sensor, _last_upload, _last_retry, _last_draw
 
     # ── BtnC zone: hold to record ─────────────────────────────────────────────
     if is_btnc_pressed():
@@ -152,7 +166,7 @@ def loop():
         while is_btnc_pressed():
             M5.update()
             if time.ticks_diff(time.ticks_ms(), t0) >= config.HOLD_TO_REC_MS:
-                if PAGES[_page_idx] == "Home":
+                if PAGES[_page_idx] in ("Home", "Sensors"):
                     _do_voice()
                 return
         return   # short tap → ignore
@@ -166,18 +180,20 @@ def loop():
         _go_to(_page_idx - 1)
         return
 
-    # ── Sensor read ───────────────────────────────────────────────────────────
     now = time.time()
-    if now - _last_upload >= config.UPLOAD_INTERVAL:
-        _last_upload = now
+
+    # ── Sensor read (always, network-independent) ─────────────────────────────
+    if now - _last_sensor >= SENSOR_INTERVAL:
+        _last_sensor = now
         if _hub:
             _sensor_data = _hub.read_all()
 
     # ── Backend upload / retry ────────────────────────────────────────────────
     if is_connected() and _sensor_data:
         if _flask_ok:
-            if now - _last_retry >= config.UPLOAD_INTERVAL:
-                _last_retry = now
+            if now - _last_upload >= UPLOAD_INTERVAL:
+                _last_upload = now
+                _last_retry  = now
                 result = upload_sensor_data(_sensor_data)
                 if result:
                     _outdoor  = result
@@ -196,12 +212,11 @@ def loop():
                     print("[Main] Backend connected!")
 
     # ── Screen refresh ────────────────────────────────────────────────────────
-    now_ms = time.ticks_ms()
-    if time.ticks_diff(now_ms, _last_draw) >= DRAW_INTERVAL:
-        _last_draw = now_ms
+    if now - _last_draw >= DRAW_INTERVAL:
+        _last_draw = now
         page = _current_page()
         if page:
-            if PAGES[_page_idx] == "Home":
+            if PAGES[_page_idx] in ("Home", "Sensors"):
                 page.update(
                     sensor_data=_sensor_data,
                     outdoor=_outdoor,
@@ -211,7 +226,6 @@ def loop():
                 )
             elif PAGES[_page_idx] == "Settings":
                 page.update()
-
 
     time.sleep_ms(20)
 

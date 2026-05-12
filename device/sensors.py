@@ -1,21 +1,16 @@
 # sensors.py — Sensor drivers (UIFlow2, confirmed pin assignments).
 #
-# Confirmed by I2C scan:
-#   ENV3 (SHT30 + BMP280) → PORT.C  SCL=G13  SDA=G14  (SoftI2C, 10kHz)
-#   SGP30 air quality      → PORT.A  SCL=G33  SDA=G32  (hardware I2C)
-#   PIR motion sensor      → PORT.B  signal=G36
-#
-# Note: PORT.C SCL/SDA are swapped vs schematic label —
-#       use G13=SCL, G14=SDA as confirmed by scan returning [68, 112].
-#
-# Addresses found:
-#   0x44 (68)  = SHT30  temperature & humidity
-#   0x70 (112) = BMP280 pressure  (non-standard address on this unit)
-#   0x58 (88)  = SGP30  eCO2 & TVOC
+# Hardware (confirmed by I2C scan):
+#   ENV3 Unit → PORT.C  SCL=G13  SDA=G14  (SoftI2C, 10kHz)
+#     SHT30   addr 0x44 — temperature & humidity
+#     QMP6988 addr 0x70 — pressure (M5Stack uses QMP6988, not BMP280)
+#   SGP30   → PORT.A  SCL=G33  SDA=G32  (SoftI2C)
+#     addr 0x58 — eCO2 & TVOC
+#   PIR     → PORT.B  GPIO G36
 
 import math
 import time
-from machine import SoftI2C, I2C, Pin
+from machine import SoftI2C, Pin
 
 
 # ── SHT30 — Temperature & Humidity ───────────────────────────────────────────
@@ -41,66 +36,85 @@ class SHT30:
             return None, None
 
 
-# ── BMP280 — Atmospheric Pressure ────────────────────────────────────────────
+# ── QMP6988 — Atmospheric Pressure ───────────────────────────────────────────
 
-class BMP280:
-    ADDR = 0x70   # confirmed 0x70 (112) from scan
+class QMP6988:
+    """
+    QMP6988 barometric pressure sensor.
+    M5Stack ENV3 Unit uses QMP6988 (addr 0x70), not BMP280 (0x76/0x77).
+    Implements the compensation formula from the QMP6988 datasheet.
+    """
+    ADDR = 0x70
 
     def __init__(self, i2c):
         self._i2c = i2c
+        # Soft reset
+        self._i2c.writeto_mem(self.ADDR, 0xE0, bytes([0xE6]))
+        time.sleep_ms(20)
+        # Normal mode: temperature ×1, pressure ×8
+        self._i2c.writeto_mem(self.ADDR, 0xF3, bytes([0x6D]))
+        time.sleep_ms(25)
+        # Load OTP calibration coefficients
         self._cal = self._load_cal()
 
     def _load_cal(self):
-        """Read factory calibration coefficients from registers 0x88..0x9F."""
+        """Read 25 bytes of OTP calibration data from 0xA0."""
         try:
-            d  = self._i2c.readfrom_mem(self.ADDR, 0x88, 24)
+            d = self._i2c.readfrom_mem(self.ADDR, 0xA0, 25)
 
-            def s(v):
-                return v - 65536 if v > 32767 else v
+            def s20(d, i):
+                """Extract 20-bit signed int from 3 bytes at index i."""
+                v = (d[i] << 12) | (d[i + 1] << 4) | (d[i + 2] >> 4)
+                if v >= (1 << 19):
+                    v -= (1 << 20)
+                return v
 
-            T1 = d[0]  | d[1]  << 8
-            T2 = s(d[2]  | d[3]  << 8)
-            T3 = s(d[4]  | d[5]  << 8)
-            P1 = d[6]  | d[7]  << 8
-            P2 = s(d[8]  | d[9]  << 8)
-            P3 = s(d[10] | d[11] << 8)
-            P4 = s(d[12] | d[13] << 8)
-            P5 = s(d[14] | d[15] << 8)
-            P6 = s(d[16] | d[17] << 8)
-            P7 = s(d[18] | d[19] << 8)
-            P8 = s(d[20] | d[21] << 8)
-            P9 = s(d[22] | d[23] << 8)
-            return T1, T2, T3, P1, P2, P3, P4, P5, P6, P7, P8, P9
+            # Calibration coefficients with datasheet scaling factors
+            b00  = s20(d,  0) * 3.0
+            bt1  = s20(d,  2) * 1.0e-2
+            bt2  = s20(d,  4) * 1.0e-4
+            bp01 = s20(d,  6) * 1.0e-2
+            b11  = s20(d,  8) * 1.0e-4
+            bp2  = s20(d, 10) * 1.0e-6
+            b12  = s20(d, 12) * 1.0e-8
+            b21  = s20(d, 14) * 1.0e-10
+            bp3  = s20(d, 16) * 1.0e-12
+            print("[QMP6988] Calibration loaded")
+            return b00, bt1, bt2, bp01, b11, bp2, b12, b21, bp3
         except Exception as e:
-            print("[BMP280] cal:", e)
-            return (0,) * 12
+            print("[QMP6988] cal:", e)
+            return None
 
     def read(self):
         """Return pressure in hPa, or None on error."""
+        if self._cal is None:
+            return None
         try:
-            self._i2c.writeto_mem(self.ADDR, 0xF4, bytes([0x27]))
-            time.sleep_ms(10)
-            d     = self._i2c.readfrom_mem(self.ADDR, 0xF7, 6)
-            raw_p = (d[0] << 12) | (d[1] << 4) | (d[2] >> 4)
-            raw_t = (d[3] << 12) | (d[4] << 4) | (d[5] >> 4)
+            # Read 6 bytes: pressure (F7-F9) + temperature (FA-FC)
+            d = self._i2c.readfrom_mem(self.ADDR, 0xF7, 6)
 
-            T1, T2, T3, P1, P2, P3, P4, P5, P6, P7, P8, P9 = self._cal
-            v1 = (raw_t / 16384 - T1 / 1024) * T2
-            v2 = (raw_t / 131072 - T1 / 8388608) ** 2 * T3
-            tf = v1 + v2
+            # Extract 20-bit signed raw values
+            raw_p = ((d[0] << 16) | (d[1] << 8) | d[2]) >> 4
+            raw_t = ((d[3] << 16) | (d[4] << 8) | d[5]) >> 4
+            if raw_p >= (1 << 19): raw_p -= (1 << 20)
+            if raw_t >= (1 << 19): raw_t -= (1 << 20)
 
-            v1 = tf / 2 - 64000
-            v2 = v1 * v1 * P6 / 32768 + v1 * P5 * 2
-            v2 = v2 / 4 + P4 * 65536
-            v1 = (P3 * v1 * v1 / 524288 + P2 * v1) / 524288
-            v1 = (1 + v1 / 32768) * P1
-            if v1 == 0:
-                return None
-            p  = (1048576 - raw_p - v2 / 4096) * 6250 / v1
-            p += (P9 * p * p / 2147483648 + p * P8 / 32768 + P7) / 16
-            return round(p / 100, 1)
+            b00, bt1, bt2, bp01, b11, bp2, b12, b21, bp3 = self._cal
+            dp = float(raw_p)
+            dt = float(raw_t)
+
+            # Pressure compensation formula (QMP6988 datasheet section 4.3)
+            p = (b00
+                 + bp01 * dp
+                 + b11  * dp * dt
+                 + bp2  * dp * dp
+                 + b12  * dp * dt * dt
+                 + b21  * dp * dp * dt
+                 + bp3  * dp * dp * dp)
+
+            return round(p / 100.0, 1)   # Pa → hPa
         except Exception as e:
-            print("[BMP280]", e)
+            print("[QMP6988]", e)
             return None
 
 
@@ -147,7 +161,7 @@ class PIR:
 # ── Derived metric calculations ───────────────────────────────────────────────
 
 def calc_dew_point(t: float, h: float) -> float:
-    """Magnus formula dew point (°C)."""
+    """Magnus formula dew point (°C). Accurate ±0.35°C for 0–60°C."""
     a, b  = 17.625, 243.04
     alpha = math.log(h / 100.0) + a * t / (b + t)
     return round(b * alpha / (a - alpha), 1)
@@ -160,25 +174,8 @@ def calc_abs_humidity(t: float, h: float) -> float:
     )
 
 
-def calc_feels_like(t: float, h: float) -> float:
-    """Simplified heat index (°C). Returns actual temp below 27°C."""
-    if t < 27 or h < 40:
-        return t
-    return round(
-        -8.78469475556
-        + 1.61139411    * t
-        + 2.33854883889 * h
-        - 0.14611605    * t * h
-        - 0.012308094   * t ** 2
-        - 0.016424828   * h ** 2
-        + 0.002211732   * t ** 2 * h
-        + 0.00072546    * t * h ** 2
-        - 0.000003582   * t ** 2 * h ** 2,
-        1,
-    )
-
-
 def calc_comfort(t: float, h: float) -> str:
+    """Human comfort classification from temperature and humidity."""
     if h < 30:                          return "Too Dry"
     if h > 70:                          return "Too Humid"
     if t < 18:                          return "Too Cold"
@@ -188,6 +185,7 @@ def calc_comfort(t: float, h: float) -> str:
 
 
 def calc_aqi_level(eco2: int) -> str:
+    """Air quality classification from eCO2 concentration (ppm)."""
     if eco2 < 600:   return "Excellent"
     if eco2 < 1000:  return "Good"
     if eco2 < 2000:  return "Moderate"
@@ -204,17 +202,16 @@ class SensorHub:
     """
 
     def __init__(self):
-        # PORT.C: SCL=G13, SDA=G14 (confirmed by scan — labels are swapped)
-        # Use SoftI2C at 10 kHz because G13/G14 are UART pins
+        # PORT.C: SCL=G13, SDA=G14 (labels swapped vs schematic, confirmed by scan)
         i2c_c = SoftI2C(scl=Pin(13), sda=Pin(14), freq=10000)
 
-        # PORT.A: SCL=G33, SDA=G32 (confirmed, standard hardware I2C)
-        i2c_a = I2C(1, scl=Pin(33), sda=Pin(32), freq=100000)
+        # PORT.A: SCL=G33, SDA=G32
+        i2c_a = SoftI2C(scl=Pin(33), sda=Pin(32), freq=100000)
 
-        self._sht = self._try_init(lambda: SHT30(i2c_c),  "SHT30")
-        self._bmp = self._try_init(lambda: BMP280(i2c_c), "BMP280")
-        self._sgp = self._try_init(lambda: SGP30(i2c_a),  "SGP30")
-        self._pir = self._try_init(lambda: PIR(36),        "PIR")
+        self._sht = self._try_init(lambda: SHT30(i2c_c),    "SHT30")
+        self._qmp = self._try_init(lambda: QMP6988(i2c_c),  "QMP6988")
+        self._sgp = self._try_init(lambda: SGP30(i2c_a),    "SGP30")
+        self._pir = self._try_init(lambda: PIR(36),          "PIR")
         print("[SensorHub] Ready")
 
     @staticmethod
@@ -230,16 +227,18 @@ class SensorHub:
     def read_all(self) -> dict:
         """
         Returns a dict with:
-          Raw     : temperature, humidity, pressure, eco2, tvoc, motion
-          Derived : dew_point, absolute_humidity, feels_like,
-                    comfort_level, air_quality_level
+          Raw      : temperature, humidity, pressure, eco2, tvoc, motion
+          Derived  : dew_point, absolute_humidity, comfort_level, air_quality_level
+          Removed  : feels_like (heat index only valid >27°C, irrelevant indoors)
         """
         # ── Raw readings ──────────────────────────────────────
         temp = hum = pressure = None
+
         if self._sht:
             temp, hum = self._sht.read()
-        if self._bmp:
-            pressure = self._bmp.read()
+
+        if self._qmp:
+            pressure = self._qmp.read()
 
         eco2 = tvoc = None
         if self._sgp:
@@ -260,12 +259,10 @@ class SensorHub:
         if temp is not None and hum is not None and hum > 0:
             data["dew_point"]         = calc_dew_point(temp, hum)
             data["absolute_humidity"] = calc_abs_humidity(temp, hum)
-            data["feels_like"]        = calc_feels_like(temp, hum)
             data["comfort_level"]     = calc_comfort(temp, hum)
         else:
             data["dew_point"]         = None
             data["absolute_humidity"] = None
-            data["feels_like"]        = None
             data["comfort_level"]     = "N/A"
 
         data["air_quality_level"] = (

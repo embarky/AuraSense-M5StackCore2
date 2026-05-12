@@ -29,7 +29,7 @@ C_ORANGE = 0xFF8800
 C_CYAN   = 0x00FFFF
 
 # ── Page order ────────────────────────────────────────────────────────────────
-PAGES = ["Settings", "Home", "Forecast"]
+PAGES = ["Settings", "Home", "Sensors"]
 
 # ── Status bar fixed x positions ──────────────────────────────────────────────
 _X_FLASK = 306   # 10x10 filled rect (flask status dot)
