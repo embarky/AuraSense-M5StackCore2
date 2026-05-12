@@ -1,4 +1,4 @@
-# connectivity.py — WiFi, sensor upload, and voice assistant (UIFlow2).
+# connectivity.py — WiFi, NTP sync, sensor upload, and voice assistant (UIFlow2).
 #
 # Implements non-blocking architectural patterns by enforcing strict timeouts 
 # on all HTTP requests to prevent single-thread starvation.
@@ -8,6 +8,7 @@ import struct
 import time
 import network
 import requests
+import ntptime
 from machine import I2C, Pin, RTC
 import M5
 from M5 import *
@@ -54,6 +55,39 @@ def is_connected() -> bool:
     return network.WLAN(network.STA_IF).isconnected()
 
 
+# ── NTP Time Sync ─────────────────────────────────────────────────────────────
+
+def sync_ntp(offset_hours: int = 2) -> bool:
+    """
+    Fetch UTC time from NTP and apply timezone offset to local RTC.
+    Default offset is +2 (CEST for Switzerland).
+    """
+    if not is_connected():
+        print("[NTP] Failed: No WiFi")
+        return False
+
+    try:
+        print("[NTP] Syncing with pool.ntp.org...")
+        # Sets the internal RTC to UTC time
+        ntptime.settime()
+        
+        # Apply timezone offset (MicroPython time is seconds since 2000-01-01)
+        local_time_sec = time.time() + (offset_hours * 3600)
+        
+        # Convert seconds to a structured time tuple
+        lt = time.localtime(local_time_sec)
+        
+        # Re-set the RTC hardware with the local timezone values
+        # RTC.datetime format: (year, month, day, weekday, hour, minute, second, subsecond)
+        RTC().datetime((lt[0], lt[1], lt[2], lt[6] + 1, lt[3], lt[4], lt[5], 0))
+        
+        print("[NTP] Success! Local time set.")
+        return True
+    except Exception as e:
+        print("[NTP] Error during sync:", e)
+        return False
+
+
 # ── Sensor Upload ─────────────────────────────────────────────────────────────
 
 def upload_sensor_data(sensor_data: dict) -> dict | None:
@@ -61,7 +95,6 @@ def upload_sensor_data(sensor_data: dict) -> dict | None:
     Upload sensor readings to the Flask backend.
     CRITICAL: Uses timeout=3 to prevent the main UI loop from freezing if the server is down.
     """
-    # Replace None values with 0 to ensure JSON serialization succeeds
     clean = {k: (v if v is not None else 0) for k, v in sensor_data.items()}
     
     try:
@@ -78,23 +111,12 @@ def upload_sensor_data(sensor_data: dict) -> dict | None:
         if resp.status_code == 200:
             result = resp.json()
             resp.close()
-            
-            # Sync local RTC time with the server's UTC time if provided
-            utc = result.get("utc_time")
-            if utc and len(utc) >= 7:
-                try:
-                    if RTC().datetime()[0] < 2020:
-                        RTC().datetime((int(utc[0]), int(utc[1]), int(utc[2]),
-                                        1, int(utc[4]), int(utc[5]), int(utc[6]), 0))
-                except Exception:
-                    pass
             return result
             
         resp.close()
         print("[Upload] Server Error HTTP", resp.status_code)
         
     except Exception as e:
-        # This will safely catch the timeout exception without crashing
         print("[Upload] Request Failed (Timeout/Network):", e)
         
     return None
@@ -103,10 +125,7 @@ def upload_sensor_data(sensor_data: dict) -> dict | None:
 # ── AXP192 Mic Power Workaround ───────────────────────────────────────────────
 
 def _axp_mic_on():
-    """
-    Forcefully powers on the microphone via the AXP192 PMU.
-    Required for certain UIFlow2 firmware versions where Mic.begin() fails to set power.
-    """
+    """Forcefully powers on the microphone via the AXP192 PMU."""
     try:
         i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
         i2c.writeto_mem(0x34, 0x12, bytes([0x57]))
@@ -125,14 +144,13 @@ def _merge_chunks(paths, out):
     for p in paths:
         try:
             with open(p, "rb") as f:
-                pcm += f.read()[44:] # Skip the 44-byte WAV header of each chunk
+                pcm += f.read()[44:]
             os.remove(p)
         except Exception as e:
             print("[MERGE] Error reading chunk:", e)
             
     sr  = config.REC_RATE
     n   = len(pcm)
-    # Reconstruct a single unified WAV header
     hdr = (b"RIFF" + struct.pack('<I', 36 + n) + b"WAVEfmt "
            + struct.pack('<I', 16) + struct.pack('<HH', 1, 1)
            + struct.pack('<II', sr, sr * 2) + struct.pack('<HH', 2, 16)
@@ -144,13 +162,10 @@ def _merge_chunks(paths, out):
 
 
 def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
-    """
-    Record audio in 1-second chunks as long as held_check() returns True.
-    """
+    """Record audio in 1-second chunks as long as held_check() returns True."""
     import os
 
     if held_check is None:
-        # Updated to use M5Unified native button check instead of raw coordinates
         held_check = lambda: M5.BtnC.isPressed()
 
     def _log(msg, color=0xFF4444):
@@ -158,7 +173,6 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
         if status_cb:
             status_cb(msg, color)
 
-    # Clean up any playing audio before recording
     Speaker.end()
     time.sleep_ms(100)
     
@@ -174,14 +188,12 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
     _log("REC...")
     _vibrate(50)
 
-    # Loop to capture 1-second files
     while True:
         chunk = "/flash/chunk_%d.wav" % len(chunks)
         Mic.recordWavFile(chunk, config.REC_RATE, 1, False)
         chunks.append(chunk)
         total += 1
         
-        # Must update hardware state to read the button release
         M5.update()
         
         if not held_check() or total >= config.MAX_REC_SECONDS:
@@ -194,12 +206,9 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
     if not chunks:
         return False
         
-    # Process chunks into final file
     if len(chunks) == 1:
-        try:
-            os.remove(rec_path)
-        except OSError:
-            pass
+        try: os.remove(rec_path)
+        except OSError: pass
         os.rename(chunks[0], rec_path)
     else:
         _merge_chunks(chunks, rec_path)
@@ -211,20 +220,17 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
 # ── Voice Upload & Playback ───────────────────────────────────────────────────
 
 def upload_voice_and_receive(rec_path: str) -> bytes | None:
-    """
-    Uploads the recorded WAV file to the Flask backend and waits for the TTS audio reply.
-    """
+    """Uploads the WAV file to the Flask backend and waits for the TTS audio reply."""
     try:
         with open(rec_path, "rb") as f:
             wav = f.read()
             
         print("[Voice] Uploading %d bytes" % len(wav))
         
-        # TIMEOUT ADDED: 10 seconds. AI generation takes time, but shouldn't block forever.
         resp = requests.post(config.VOICE_URL, data=wav,
                              headers={"Content-Type": "audio/wav"}, timeout=10)
                              
-        if resp.status_code == 204: # 204 No Content means "AI chose not to speak"
+        if resp.status_code == 204:
             resp.close()
             return None
             
@@ -242,12 +248,9 @@ def play_wav_from_memory(wav_bytes: bytes) -> None:
     """Plays the raw PCM data from the downloaded WAV file in memory."""
     Speaker.begin()
     Speaker.setVolume(config.SPK_VOLUME)
-    
-    # Skip the 44-byte WAV header and feed raw PCM data to the speaker
     Speaker.playRaw(wav_bytes[44:], config.REC_RATE, False)
     
     try:
-        # Keep updating M5 to prevent hardware watchdog resets while playing
         while Speaker.isPlaying():
             M5.update()
             time.sleep_ms(50)
