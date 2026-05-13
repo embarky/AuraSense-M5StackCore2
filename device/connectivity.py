@@ -256,3 +256,33 @@ def _vibrate(ms=80, intensity=180):
         M5.Power.setVibration(0)
     except Exception:
         pass
+
+# ── Weather API ───────────────────────────────────────────────────────────────
+
+def fetch_forecast():
+    """
+    Fetch the 5-day weather forecast from the Flask backend.
+    Uses a strict timeout to prevent UI freezing.
+    """
+    if not is_connected():
+        print("[Weather] Failed: No WiFi")
+        return None
+
+    try:
+        resp = requests.get(config.WEATHER_URL, timeout=3)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            resp.close()
+            
+            forecast = result.get("forecast", [])
+            print("[Weather] Fetched", len(forecast), "days")
+            return forecast
+            
+        resp.close()
+        print("[Weather] Server Error HTTP", resp.status_code)
+        
+    except Exception as e:
+        print("[Weather] Request Failed (Timeout/Network):", e)
+        
+    return None

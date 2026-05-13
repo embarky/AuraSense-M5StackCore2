@@ -26,6 +26,7 @@ from flask import Flask
 from config import Config
 from routes.voice   import voice_bp
 from routes.sensors import sensors_bp
+from routes.weather import weather_bp
 from services.gemini_service    import GeminiService
 from services.tts_service       import TTSService
 from services.bigquery_service  import BigQueryService
@@ -57,6 +58,7 @@ def create_app() -> Flask:
     # ── Register blueprints ───────────────────────────────────────────────────
     app.register_blueprint(voice_bp)
     app.register_blueprint(sensors_bp)
+    app.register_blueprint(weather_bp)
 
     return app
 

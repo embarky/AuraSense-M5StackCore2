@@ -56,8 +56,12 @@ class WeatherService:
 
     def get_forecast(self) -> list[dict]:
         """
-        Return the next 5-day / 3-hour forecast (40 data points).
-        Results are NOT cached individually — call sparingly.
+        Return a 5-day daily aggregated forecast.
+ 
+        Fetches 40 x 3-hourly data points from OWM and collapses them into
+        one summary dict per local calendar day.  Fields returned per day:
+            day, date, temp_min, temp_max, feels_like, humidity, wind,
+            icon, pop, precip_mm, description
         """
         self._refresh_location()
         params = self._build_params()
@@ -66,16 +70,83 @@ class WeatherService:
             r = requests.get(f"{self._OWM_BASE}/forecast", params=params, timeout=5)
             r.raise_for_status()
             data = r.json()
-            return [
-                {
-                    "dt":          item["dt"],
-                    "temp":        item["main"]["temp"],
-                    "description": item["weather"][0]["description"],
-                    "icon":        item["weather"][0]["icon"],
-                    "pop":         item.get("pop", 0),        # precipitation probability
-                }
-                for item in data.get("list", [])
-            ]
+ 
+            daily: dict = {}
+            offset = self._location.get("offset", 0)
+ 
+            for item in data.get("list", []):
+                # ── Convert UTC timestamp to local calendar date ───────────────
+                local_dt = item["dt"] + offset
+                date_str = time.strftime("%Y-%m-%d", time.gmtime(local_dt))
+                day_name = time.strftime("%a",       time.gmtime(local_dt))
+ 
+                # ── Extract raw fields ────────────────────────────────────────
+                temp_min    = item["main"]["temp_min"]
+                temp_max    = item["main"]["temp_max"]
+                feels_like  = item["main"]["feels_like"]
+                humidity    = item["main"]["humidity"]
+                wind        = item["wind"]["speed"]
+                icon        = item["weather"][0]["icon"]
+                description = item["weather"][0]["description"]
+                pop         = item.get("pop", 0)
+                pod         = item.get("sys", {}).get("pod", "")   # "d" or "n"
+ 
+                # rain / snow fields are absent when precipitation is zero
+                rain_mm  = item.get("rain", {}).get("3h", 0.0)
+                snow_mm  = item.get("snow", {}).get("3h", 0.0)
+                precip   = rain_mm + snow_mm
+ 
+                if date_str not in daily:
+                    # ── First entry of the day: initialise ────────────────────
+                    daily[date_str] = {
+                        "day":         day_name,
+                        "date": "{} {}/{}".format(day_name, date_str[8:], date_str[5:7]), # "Mon 21/08"
+                        "temp_min":    temp_min,
+                        "temp_max":    temp_max,
+                        "feels_like":  feels_like,
+                        "humidity":    humidity,
+                        "wind":        wind,
+                        "icon":        icon,
+                        "pop":         pop,
+                        "precip_mm":   precip,
+                        "description": description,
+                        "is_day":      (pod == "d"),
+                    }
+                else:
+                    d = daily[date_str]
+ 
+                    # Rolling min / max temperature across all 3-h slots
+                    d["temp_min"]  = min(d["temp_min"],  temp_min)
+                    d["temp_max"]  = max(d["temp_max"],  temp_max)
+ 
+                    # Worst-case precipitation probability for the day
+                    d["pop"]       = max(d["pop"],       pop)
+ 
+                    # Accumulate total precipitation volume for the day
+                    d["precip_mm"] += precip
+ 
+                    # Lock representative values to the first daytime slot
+                    if pod == "d" and not d["is_day"]:
+                        d["icon"]        = icon
+                        d["description"] = description
+                        d["feels_like"]  = feels_like
+                        d["humidity"]    = humidity
+                        d["wind"]        = wind
+                        d["is_day"]      = True
+ 
+            # ── Post-process: round values, strip internal flag ────────────────
+            result = list(daily.values())[:5]
+            for d in result:
+                d.pop("is_day", None)
+                d["temp_min"]  = round(d["temp_min"])
+                d["temp_max"]  = round(d["temp_max"])
+                d["feels_like"] = round(d["feels_like"], 1)
+                d["wind"]      = round(d["wind"],      1)
+                d["precip_mm"] = round(d["precip_mm"], 1)
+                d["pop"]       = round(d["pop"],       2)
+ 
+            return result
+ 
         except Exception as exc:
             print(f"[WeatherService] Forecast fetch failed: {exc}")
             return []
