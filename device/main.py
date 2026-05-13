@@ -24,10 +24,10 @@ from pages.settings import SettingsPage
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 REC_WAV         = "/flash/rec.wav"
-SENSOR_INTERVAL = 3
-DRAW_INTERVAL   = 2
-UPLOAD_INTERVAL = 5
-RETRY_INTERVAL  = 10
+SENSOR_INTERVAL = 3     # Seconds
+DRAW_INTERVAL   = 2     # Seconds
+UPLOAD_INTERVAL = 5     # Seconds
+RETRY_INTERVAL  = 10    # Seconds
 LONG_PRESS_MS   = 600   # Threshold for switching to Settings
 
 # ── Global State ──────────────────────────────────────────────────────────────
@@ -46,9 +46,15 @@ _last_draw   = 0
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _time_str():
-    """Returns the current local time (adjusted by NTP offset)."""
+    """
+    Returns the current local time dynamically adjusted by NTP offset.
+    The system RTC runs on UTC. We add the offset (e.g., +2 hours for CEST) here.
+    """
     try:
-        t = time.localtime()
+        # MicroPython's time.time() returns seconds since Epoch (based on UTC).
+        # Add 2 hours (7200 seconds) for Switzerland (CEST).
+        local_sec = time.time() + (2 * 3600)
+        t = time.localtime(local_sec)
         return "{:02d}:{:02d}".format(t[3], t[4])
     except Exception: 
         return "--:--"
@@ -69,7 +75,7 @@ def _go_to(name: str):
     page = _current_page()
     if page:
         page.on_enter()
-    _last_draw = 0 
+    _last_draw = 0 # Force immediate redraw upon entry
 
 def _cycle_nav(delta: int):
     """Cycle between pages defined in PAGES (Home, Sensors)."""
@@ -143,8 +149,8 @@ def setup():
 
     # 1. Connect WiFi
     if wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)):
-        # 2. Sync Time via NTP (Swiss CEST: UTC+2)
-        sync_ntp(offset_hours=2)
+        # 2. Sync Time via NTP (Keeps RTC at UTC standard time)
+        sync_ntp()
 
     if _hub: _sensor_data = _hub.read_all()
     _go_to(_current_name)
@@ -194,15 +200,17 @@ def loop():
             _cycle_nav(1)
         return
 
-    now = time.time()
+    # CRITICAL FIX: Use a monotonic clock (ticks_ms) instead of real-time (time.time())
+    # This prevents the application from freezing if the NTP synchronizer shifts the RTC.
+    now = time.ticks_ms()
 
     # ── Sensor read ───────────────────────────────────────────────────────────
-    if now - _last_sensor >= SENSOR_INTERVAL:
+    if time.ticks_diff(now, _last_sensor) >= SENSOR_INTERVAL * 1000:
         _last_sensor = now
         if _hub: _sensor_data = _hub.read_all()
 
     # ── Screen refresh ────────────────────────────────────────────────────────
-    if now - _last_draw >= DRAW_INTERVAL:
+    if time.ticks_diff(now, _last_draw) >= DRAW_INTERVAL * 1000:
         _last_draw = now
         page = _current_page()
         if page:
@@ -217,15 +225,15 @@ def loop():
     # ── Backend networking ────────────────────────────────────────────────────
     if is_connected() and _sensor_data:
         if _flask_ok:
-            if now - _last_upload >= UPLOAD_INTERVAL:
-                _last_upload = time.time()
-                _last_retry = _last_upload
+            if time.ticks_diff(now, _last_upload) >= UPLOAD_INTERVAL * 1000:
+                _last_upload = now
+                _last_retry = now
                 result = upload_sensor_data(_sensor_data)
                 if result: _outdoor, _flask_ok = result, True
                 else: _flask_ok = False
         else:
-            if now - _last_retry >= RETRY_INTERVAL:
-                _last_retry = time.time()
+            if time.ticks_diff(now, _last_retry) >= RETRY_INTERVAL * 1000:
+                _last_retry = now
                 result = upload_sensor_data(_sensor_data)
                 if result: _outdoor, _flask_ok = result, True
 
