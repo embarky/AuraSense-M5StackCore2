@@ -112,6 +112,7 @@ def receive_sensor_data():
         "outdoor_temp": outdoor.get("temp"),
         "outdoor_desc": outdoor.get("description"),
         "outdoor_icon": outdoor.get("icon"),
+        "location":     loc.get("city"),
         "utc_time":     ntp_sync,
         "ai_advice":    _state.get("ai_advice"),
     }), 200

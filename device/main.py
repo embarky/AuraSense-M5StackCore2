@@ -25,11 +25,11 @@ from pages.settings import SettingsPage
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 REC_WAV           = "/flash/rec.wav"
-SENSOR_INTERVAL   = 3000     # ms
-DRAW_INTERVAL     = 2000     # ms
-UPLOAD_INTERVAL   = 5000     # ms
-RETRY_INTERVAL    = 10000    # ms
-FORECAST_INTERVAL = 3600000  # ms (1 hour)
+SENSOR_INTERVAL   = 3000
+DRAW_INTERVAL     = 2000
+UPLOAD_INTERVAL   = 5000
+RETRY_INTERVAL    = 10000
+FORECAST_INTERVAL = 3600000
 LONG_PRESS_MS     = 600
 
 # ── Global State ──────────────────────────────────────────────────────────────
@@ -44,11 +44,13 @@ _last_sensor   = 0
 _last_upload   = 0
 _last_retry    = 0
 _last_draw     = 0
-_last_forecast   = 0
-_prev_flask_ok  = False   # detect backend connection event
+_last_forecast = 0
+_prev_flask_ok = False
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Date/time helpers ─────────────────────────────────────────────────────────
+_DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
+           "Jul","Aug","Sep","Oct","Nov","Dec"]
 
 def _time_str():
     try:
@@ -57,6 +59,17 @@ def _time_str():
         return "{:02d}:{:02d}".format(t[3], t[4])
     except Exception:
         return "--:--"
+
+def _date_str():
+    # Returns e.g. "WED  13 MAY"
+    try:
+        local_sec = time.time() + (2 * 3600)
+        t = time.localtime(local_sec)
+        return "{}  {:02d} {}".format(
+            _DAYS[t[6]].upper(), t[2], _MONTHS[t[1] - 1].upper()
+        )
+    except Exception:
+        return ""
 
 def _current_page():
     return _pages.get(_current_name)
@@ -94,7 +107,6 @@ def _do_voice():
             except Exception: pass
         update_rec_indicator(_rec_sec[0])
 
-    # isPressed() maintains hold across 1s recording chunks
     ok = record_while_held(REC_WAV, lambda: M5.BtnC.isPressed(), _status_cb)
     update_rec_indicator(0)
 
@@ -144,7 +156,6 @@ def setup():
 
     if wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)):
         sync_ntp()
-        # Fetch forecast immediately on boot
         data = fetch_forecast()
         if data: _forecast = data
 
@@ -198,6 +209,12 @@ def loop():
 
     now = time.ticks_ms()
 
+    # ── Weather page touch (per-frame for responsiveness) ─────────────────────
+    if _current_name == "Weather":
+        page = _current_page()
+        if page and hasattr(page, "poll_touch"):
+            page.poll_touch()
+
     # ── Sensor read ───────────────────────────────────────────────────────────
     if time.ticks_diff(now, _last_sensor) >= SENSOR_INTERVAL:
         _last_sensor = now
@@ -208,7 +225,15 @@ def loop():
         _last_draw = now
         page = _current_page()
         if page:
-            if _current_name in ("Home", "Sensors"):
+            if _current_name == "Home":
+                # Pass date string to home page for display
+                if hasattr(page, "set_date"):
+                    page.set_date(_date_str())
+                page.update(
+                    sensor_data=_sensor_data, outdoor=_outdoor,
+                    time_str=_time_str(), wifi_ok=is_connected(), flask_ok=_flask_ok,
+                )
+            elif _current_name == "Sensors":
                 page.update(
                     sensor_data=_sensor_data, outdoor=_outdoor,
                     time_str=_time_str(), wifi_ok=is_connected(), flask_ok=_flask_ok,
@@ -252,12 +277,6 @@ def loop():
             if data: _forecast = data
 
     time.sleep_ms(20)
-
-        # ── Weather page touch (needs per-frame polling, not just DRAW_INTERVAL) ──
-    if _current_name == "Weather":
-        page = _current_page()
-        if page:
-            page.poll_touch()
 
 
 if __name__ == "__main__":
