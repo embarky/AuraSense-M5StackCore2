@@ -24,7 +24,7 @@ C_ORANGE = 0xFF8800
 C_CYAN   = 0x00FFFF
 
 # ── Page Order (Removed "Settings" from navigation cycle) ─────────────────────
-PAGES = ["Home", "Sensors"]
+PAGES = ["Home", "Sensors", "Weather"]  
 
 # ── Status bar fixed x positions ──────────────────────────────────────────────
 _X_FLASK = 306   # Flask status dot
@@ -78,3 +78,23 @@ def air_color(level: str) -> int:
 def comfort_color(level: str) -> int:
     return {"Comfortable": C_GREEN, "Acceptable": C_CYAN, "Too Dry": C_ORANGE, 
             "Too Humid": C_ORANGE, "Too Cold": C_CYAN, "Too Warm": C_RED}.get(level, C_MUTED)
+
+def weather_icon(owm_icon_code):
+    """
+    M5Stack does not support Emoji by default; they must be mapped to standard ASCII English phrases.
+    """
+    if not owm_icon_code:
+        return "--"
+        
+    mapping = {
+        "01d": "Sunny",   "01n": "Clear",
+        "02d": "P.Cloud", "02n": "P.Cloud",
+        "03d": "Cloudy",  "03n": "Cloudy",
+        "04d": "Overcast","04n": "Overcast",
+        "09d": "Shower",  "09n": "Shower",
+        "10d": "Rain",    "10n": "Rain",
+        "11d": "Storm",   "11n": "Storm",
+        "13d": "Snow",    "13n": "Snow",
+        "50d": "Mist",    "50n": "Mist"
+    }
+    return mapping.get(owm_icon_code, "Unk")

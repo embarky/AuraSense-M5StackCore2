@@ -7,6 +7,7 @@ SERVER_HOST = "10.76.107.153"
 SERVER_PORT = 5001
 VOICE_URL   = "http://{}:{}/voice".format(SERVER_HOST, SERVER_PORT)
 SENSOR_URL  = "http://{}:{}/api/sensor_data".format(SERVER_HOST, SERVER_PORT)
+WEATHER_URL = "http://{}:{}/api/forecast".format(SERVER_HOST, SERVER_PORT)
 
 REC_RATE        = 16000
 SPK_VOLUME      = 120
