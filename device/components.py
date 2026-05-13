@@ -28,8 +28,8 @@ PAGES = ["Home", "Sensors"]
 
 # ── Status bar fixed x positions ──────────────────────────────────────────────
 _X_FLASK = 306   # Flask status dot
-_X_WIFI  = 265   # "WiFi" text
-_X_REC   = 160   # "REC" indicator
+_X_WIFI  = 272   # "WiFi" text
+_X_REC   = 205   # "REC" indicator
 
 
 def draw_text(text, x: int, y: int, color: int = C_TEXT,
@@ -52,7 +52,7 @@ def draw_status_bar(time_str: str = "",
 
     draw_text("WiFi", _X_WIFI, 4, C_GREEN if wifi else C_MUTED, C_PANEL, 1)
     dot_color = C_GREEN if flask_ok else C_RED
-    M5.Display.fillRect(_X_FLASK, 5, 10, 10, dot_color)
+    M5.Display.fillCircle(_X_FLASK + 5, 10, 2, dot_color)
 
 
 def update_rec_indicator(rec_sec: int) -> None:

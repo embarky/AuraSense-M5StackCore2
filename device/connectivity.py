@@ -1,248 +1,258 @@
-# main.py — Smart Space entry point (UIFlow2).
+# connectivity.py — WiFi, NTP sync, sensor upload, and voice assistant (UIFlow2).
 #
-# Interaction Logic (Redesigned):
-#   BtnA (Left):   Short -> Prev Page | Long (600ms) -> Enter Settings
-#   BtnB (Center): Short -> Home Page
-#   BtnC (Right):  Short -> Next Page | Long -> Voice Assistant
+# Implements non-blocking architectural patterns by enforcing strict timeouts 
+# on all HTTP requests to prevent single-thread starvation.
 
+import json
+import struct
 import time
+import network
+import requests
+import ntptime
+from machine import I2C, Pin
 import M5
 from M5 import *
 
 import config
-from sensors      import SensorHub
-from connectivity import (wifi_connect, sync_ntp, is_connected, upload_sensor_data,
-                           record_while_held, upload_voice_and_receive,
-                           play_wav_from_memory)
-from components   import (SCREEN_W, SCREEN_H, STATUS_H,
-                           C_BG, C_MUTED, C_GREEN, C_RED, C_BLUE,
-                           PAGES, is_btnc_pressed,
-                           draw_status_bar, update_rec_indicator, draw_text)
-from pages.home     import HomePage
-from pages.sensor   import SensorPage
-from pages.settings import SettingsPage
-
-# ── Constants ─────────────────────────────────────────────────────────────────
-REC_WAV         = "/flash/rec.wav"
-SENSOR_INTERVAL = 3     # Seconds
-DRAW_INTERVAL   = 2     # Seconds
-UPLOAD_INTERVAL = 5     # Seconds
-RETRY_INTERVAL  = 10    # Seconds
-LONG_PRESS_MS   = 600   # Threshold for switching to Settings
-
-# ── Global State ──────────────────────────────────────────────────────────────
-_current_name = "Home"
-_pages       = {}
-_hub         = None
-_sensor_data = {}
-_outdoor     = {}
-_flask_ok    = False
-_last_sensor = 0
-_last_upload = 0
-_last_retry  = 0
-_last_draw   = 0
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── WiFi ──────────────────────────────────────────────────────────────────────
 
-def _time_str():
-    """
-    Returns the current local time dynamically adjusted by NTP offset.
-    The system RTC runs on UTC. We add the offset (e.g., +2 hours for CEST) here.
-    """
-    try:
-        # MicroPython's time.time() returns seconds since Epoch (based on UTC).
-        # Add 2 hours (7200 seconds) for Switzerland (CEST).
-        local_sec = time.time() + (2 * 3600)
-        t = time.localtime(local_sec)
-        return "{:02d}:{:02d}".format(t[3], t[4])
-    except Exception: 
-        return "--:--"
+def wifi_connect(status_cb=None) -> bool:
+    """Connect to the configured Wi-Fi network with visual feedback."""
+    def _log(msg, color=0xFFFF00):
+        print("[WiFi]", msg)
+        if status_cb:
+            status_cb(msg, color)
 
-def _current_page():
-    return _pages.get(_current_name)
-
-def _go_to(name: str):
-    """Transition to a specific page by name."""
-    global _current_name, _last_draw
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
     
-    current = _current_page()
-    if current and hasattr(current, "on_exit"):
-        try: current.on_exit()
-        except Exception: pass
-            
-    _current_name = name
-    page = _current_page()
-    if page:
-        page.on_enter()
-    _last_draw = 0 # Force immediate redraw upon entry
-
-def _cycle_nav(delta: int):
-    """Cycle between pages defined in PAGES (Home, Sensors)."""
-    # If currently in Settings, jump back into the cycle at Home
-    try:
-        curr_idx = PAGES.index(_current_name)
-    except ValueError:
-        curr_idx = 0
+    if wlan.isconnected():
+        _log("Connected: " + wlan.ifconfig()[0], 0x00FF00)
+        return True
+        
+    if not config.WIFI_SSID:
+        _log("No SSID Configured", 0xFF0000)
+        return False
+        
+    _log("Connecting to " + config.WIFI_SSID)
+    wlan.connect(config.WIFI_SSID, config.WIFI_PASSWORD)
     
-    new_idx = (curr_idx + delta) % len(PAGES)
-    _go_to(PAGES[new_idx])
+    # Wait up to 20 seconds for connection
+    for _ in range(20):
+        if wlan.isconnected():
+            _log("WiFi OK: " + wlan.ifconfig()[0], 0x00FF00)
+            return True
+        time.sleep(1)
+        
+    _log("WiFi FAILED", 0xFF0000)
+    return False
 
 
-# ── Voice Assistant ───────────────────────────────────────────────────────────
+def is_connected() -> bool:
+    """Check if the device currently has an active Wi-Fi connection."""
+    return network.WLAN(network.STA_IF).isconnected()
 
-def _do_voice():
-    global _flask_ok
-    _rec_sec = [0]
 
-    def _status_cb(msg, color):
-        if "REC" in msg and "s" in msg:
-            try: _rec_sec[0] = int(msg.strip().split()[-1].replace("s", ""))
-            except Exception: pass
-        update_rec_indicator(_rec_sec[0])
+# ── NTP Time Sync ─────────────────────────────────────────────────────────────
 
-    ok = record_while_held(REC_WAV, is_btnc_pressed, _status_cb)
-    update_rec_indicator(0)
-
-    if not ok: return
-
+def sync_ntp() -> bool:
+    """
+    Fetch UTC time from NTP. 
+    (Timezone offsets are NO LONGER written to the RTC to prevent background 
+    syncs from overriding them. Offsets are handled dynamically during display).
+    """
     if not is_connected():
-        draw_text(" No WiFi ", 90, 110, C_RED, C_BG, 2)
-        time.sleep(1)
-        _current_page().on_enter()
-        return
+        print("[NTP] Failed: No WiFi")
+        return False
 
-    draw_text("Uploading...", 75, 110, C_BLUE, C_BG, 2)
-    audio = upload_voice_and_receive(REC_WAV)
+    try:
+        print("[NTP] Syncing with pool.ntp.org...")
+        # Sets the internal RTC to UTC standard time
+        ntptime.settime()
+        print("[NTP] Success! System time set to UTC.")
+        return True
+    except Exception as e:
+        print("[NTP] Error during sync:", e)
+        return False
 
-    if audio and len(audio) > 44:
-        _flask_ok = True
-        draw_text(" Playing... ", 80, 110, C_GREEN, C_BG, 2)
-        play_wav_from_memory(audio)
+
+# ── Sensor Upload ─────────────────────────────────────────────────────────────
+
+def upload_sensor_data(sensor_data: dict) -> dict | None:
+    """
+    Upload sensor readings to the Flask backend.
+    CRITICAL: Uses timeout=3 to prevent the main UI loop from freezing if the server is down.
+    """
+    clean = {k: (v if v is not None else 0) for k, v in sensor_data.items()}
+    
+    try:
+        payload = json.dumps(clean)
+        headers = {
+            "Content-Type":   "application/json",
+            "Connection":     "close",
+            "Content-Length": str(len(payload)),
+        }
+        
+        # TIMEOUT ADDED: Prevents the "fake death" of the UI and sensor readings
+        resp = requests.post(config.SENSOR_URL, data=payload, headers=headers, timeout=3)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            resp.close()
+            return result
+            
+        resp.close()
+        print("[Upload] Server Error HTTP", resp.status_code)
+        
+    except Exception as e:
+        print("[Upload] Request Failed (Timeout/Network):", e)
+        
+    return None
+
+
+# ── AXP192 Mic Power Workaround ───────────────────────────────────────────────
+
+def _axp_mic_on():
+    """Forcefully powers on the microphone via the AXP192 PMU."""
+    try:
+        i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=400000)
+        i2c.writeto_mem(0x34, 0x12, bytes([0x57]))
+        i2c.writeto_mem(0x34, 0x96, bytes([0x06]))
+        time.sleep(0.3)
+    except Exception as e:
+        print("[AXP] Mic power init skipped:", e)
+
+
+# ── Recording ─────────────────────────────────────────────────────────────────
+
+def _merge_chunks(paths, out):
+    """Merges multiple 1-second WAV chunks into a single valid WAV file."""
+    import os
+    pcm = b""
+    for p in paths:
+        try:
+            with open(p, "rb") as f:
+                pcm += f.read()[44:]
+            os.remove(p)
+        except Exception as e:
+            print("[MERGE] Error reading chunk:", e)
+            
+    sr  = config.REC_RATE
+    n   = len(pcm)
+    hdr = (b"RIFF" + struct.pack('<I', 36 + n) + b"WAVEfmt "
+           + struct.pack('<I', 16) + struct.pack('<HH', 1, 1)
+           + struct.pack('<II', sr, sr * 2) + struct.pack('<HH', 2, 16)
+           + b"data" + struct.pack('<I', n))
+           
+    with open(out, "wb") as f:
+        f.write(hdr)
+        f.write(pcm)
+
+
+def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
+    """Record audio in 1-second chunks as long as held_check() returns True."""
+    import os
+
+    if held_check is None:
+        held_check = lambda: M5.BtnC.isPressed()
+
+    def _log(msg, color=0xFF4444):
+        print("[REC]", msg)
+        if status_cb:
+            status_cb(msg, color)
+
+    Speaker.end()
+    time.sleep_ms(100)
+    
+    _axp_mic_on()
+    Mic.begin()
+    try:
+        Mic.setGain(config.MIC_GAIN)
+    except Exception:
+        pass
+
+    chunks = []
+    total  = 1
+    _log("REC 1s")
+    _vibrate(50)
+
+    while True:
+        chunk = "/flash/chunk_%d.wav" % len(chunks)
+        Mic.recordWavFile(chunk, config.REC_RATE, 1, False)
+        chunks.append(chunk)
+        
+        M5.update()
+        
+        if not held_check() or total >= config.MAX_REC_SECONDS:
+            break
+        total += 1
+        _log("REC %ds" % total)
+
+    Mic.end()
+    _vibrate(50)
+
+    if not chunks:
+        return False
+        
+    if len(chunks) == 1:
+        try: os.remove(rec_path)
+        except OSError: pass
+        os.rename(chunks[0], rec_path)
     else:
-        _flask_ok = False
-        draw_text(" No reply  ", 80, 110, C_MUTED, C_BG, 2)
-        time.sleep(1)
+        _merge_chunks(chunks, rec_path)
+        
+    print("[REC] Total %ds recorded" % total)
+    return True
 
-    _current_page().on_enter()
+
+# ── Voice Upload & Playback ───────────────────────────────────────────────────
+
+def upload_voice_and_receive(rec_path: str) -> bytes | None:
+    """Uploads the WAV file to the Flask backend and waits for the TTS audio reply."""
+    try:
+        with open(rec_path, "rb") as f:
+            wav = f.read()
+            
+        print("[Voice] Uploading %d bytes" % len(wav))
+        
+        resp = requests.post(config.VOICE_URL, data=wav,
+                             headers={"Content-Type": "audio/wav"}, timeout=10)
+                             
+        if resp.status_code == 204:
+            resp.close()
+            return None
+            
+        audio = resp.content
+        resp.close()
+        print("[Voice] Received %d bytes of TTS audio" % len(audio))
+        return audio
+        
+    except Exception as e:
+        print("[Voice] Communication Error:", e)
+        return None
 
 
-# ── Setup ─────────────────────────────────────────────────────────────────────
-
-def setup():
-    global _hub, _pages, _sensor_data
-
-    M5.begin()
+def play_wav_from_memory(wav_bytes: bytes) -> None:
+    """Plays the raw PCM data from the downloaded WAV file in memory."""
     Speaker.begin()
     Speaker.setVolume(config.SPK_VOLUME)
-
-    M5.Display.fillScreen(C_BG)
-    draw_text("SMART SPACE", 75, 95, 0xFFA500, C_BG, 2)
-    draw_text("Initializing...", 95, 125, C_MUTED, C_BG, 1)
-
-    try: _hub = SensorHub()
-    except Exception as e: print("[Setup] SensorHub error:", e)
-
-    _pages["Home"]     = HomePage()
-    _pages["Sensors"]  = SensorPage()
-    _pages["Settings"] = SettingsPage()
-
-    # 1. Connect WiFi
-    if wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)):
-        # 2. Sync Time via NTP (Keeps RTC at UTC standard time)
-        sync_ntp()
-
-    if _hub: _sensor_data = _hub.read_all()
-    _go_to(_current_name)
-
-
-# ── Main Loop ─────────────────────────────────────────────────────────────────
-
-def loop():
-    global _sensor_data, _outdoor, _flask_ok
-    global _last_sensor, _last_upload, _last_retry, _last_draw
-
-    M5.update()
-
-    # ── Button A: Prev Page (Short) | Settings (Long) ─────────────────────────
-    if M5.BtnA.wasPressed():
-        t0 = time.ticks_ms()
-        is_long = False
-        while M5.BtnA.isPressed():
-            M5.update()
-            if time.ticks_diff(time.ticks_ms(), t0) >= LONG_PRESS_MS:
-                _go_to("Settings")
-                is_long = True
-                while M5.BtnA.isPressed(): M5.update() # Wait for release
-                break
-        if not is_long:
-            _cycle_nav(-1)
-        return
-
-    # ── Button B: Home Page (Short) ───────────────────────────────────────────
-    if M5.BtnB.wasPressed():
-        _go_to("Home")
-        return
-
-    # ── Button C: Next Page (Short) | Voice Assistant (Long) ──────────────────
-    if M5.BtnC.wasPressed():
-        t0 = time.ticks_ms()
-        is_long = False
-        while M5.BtnC.isPressed():
-            M5.update()
-            if time.ticks_diff(time.ticks_ms(), t0) >= config.HOLD_TO_REC_MS:
-                if _current_name in ("Home", "Sensors"):
-                    _do_voice()
-                is_long = True
-                while M5.BtnC.isPressed(): M5.update() # Wait for release
-                break
-        if not is_long:
-            _cycle_nav(1)
-        return
-
-    # CRITICAL FIX: Use a monotonic clock (ticks_ms) instead of real-time (time.time())
-    # This prevents the application from freezing if the NTP synchronizer shifts the RTC.
-    now = time.ticks_ms()
-
-    # ── Sensor read ───────────────────────────────────────────────────────────
-    if time.ticks_diff(now, _last_sensor) >= SENSOR_INTERVAL * 1000:
-        _last_sensor = now
-        if _hub: _sensor_data = _hub.read_all()
-
-    # ── Screen refresh ────────────────────────────────────────────────────────
-    if time.ticks_diff(now, _last_draw) >= DRAW_INTERVAL * 1000:
-        _last_draw = now
-        page = _current_page()
-        if page:
-            if _current_name in ("Home", "Sensors"):
-                page.update(
-                    sensor_data=_sensor_data, outdoor=_outdoor,
-                    time_str=_time_str(), wifi_ok=is_connected(), flask_ok=_flask_ok,
-                )
-            elif _current_name == "Settings":
-                page.update()
-
-    # ── Backend networking ────────────────────────────────────────────────────
-    if is_connected() and _sensor_data:
-        if _flask_ok:
-            if time.ticks_diff(now, _last_upload) >= UPLOAD_INTERVAL * 1000:
-                _last_upload = now
-                _last_retry = now
-                result = upload_sensor_data(_sensor_data)
-                if result: _outdoor, _flask_ok = result, True
-                else: _flask_ok = False
-        else:
-            if time.ticks_diff(now, _last_retry) >= RETRY_INTERVAL * 1000:
-                _last_retry = now
-                result = upload_sensor_data(_sensor_data)
-                if result: _outdoor, _flask_ok = result, True
-
-    time.sleep_ms(20)
-
-
-if __name__ == "__main__":
+    Speaker.playRaw(wav_bytes[44:], config.REC_RATE, False)
+    
     try:
-        setup()
-        while True: loop()
-    except Exception as e:
-        import sys; sys.print_exception(e)
+        while Speaker.isPlaying():
+            M5.update()
+            time.sleep_ms(50)
+    except Exception:
+        pass
+
+
+def _vibrate(ms=80, intensity=180):
+    """Trigger the Core2 internal vibration motor for tactile feedback."""
+    try:
+        M5.Power.setVibration(intensity)
+        time.sleep_ms(ms)
+        M5.Power.setVibration(0)
+    except Exception:
+        pass
