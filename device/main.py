@@ -9,6 +9,13 @@ import time
 import M5
 from M5 import *
 
+# Try importing hardware for global LED control
+try:
+    import hardware
+    _HAS_HARDWARE = True
+except ImportError:
+    _HAS_HARDWARE = False
+
 import config
 from sensors      import SensorHub
 from connectivity import (wifi_connect, sync_ntp, is_connected, upload_sensor_data,
@@ -47,6 +54,11 @@ _last_draw     = 0
 _last_forecast = 0
 _prev_flask_ok = False
 
+# Global LED State
+_rgb_bar       = None
+_led_state     = False
+_last_led_tick = 0
+
 # ── Date/time helpers ─────────────────────────────────────────────────────────
 _DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
@@ -61,7 +73,6 @@ def _time_str():
         return "--:--"
 
 def _date_str():
-    # Returns e.g. "WED  13 MAY"
     try:
         local_sec = time.time() + (2 * 3600)
         t = time.localtime(local_sec)
@@ -94,9 +105,44 @@ def _cycle_nav(delta):
     new_idx = (curr_idx + delta) % len(PAGES)
     _go_to(PAGES[new_idx])
 
+# ── Global LED Alert Engine ───────────────────────────────────────────────────
+def global_led_alert():
+    """Runs continuously in the main loop to provide cross-page hardware alerts"""
+    global _led_state, _last_led_tick
+    if not _HAS_HARDWARE or not _rgb_bar: 
+        return
+
+    eco2 = _sensor_data.get("eco2", 0) if _sensor_data else 0
+    tvoc = _sensor_data.get("tvoc", 0) if _sensor_data else 0
+    
+    # Safe fallback if values are None
+    eco2 = eco2 if eco2 is not None else 0
+    tvoc = tvoc if tvoc is not None else 0
+
+    if eco2 > 1000 or tvoc > 300:
+        color = 0xFF0000
+        interval = 250
+    elif eco2 > 800 or tvoc > 150:
+        color = 0xFFFF00
+        interval = 500
+    else:
+        # Normal state: Keep hardware silent/off
+        if _led_state:
+            _rgb_bar.fill_color(0x000000)
+            _led_state = False
+        return
+
+    # Blinking logic
+    now = time.ticks_ms()
+    if time.ticks_diff(now, _last_led_tick) > interval:
+        _last_led_tick = now
+        _led_state = not _led_state
+        if _led_state:
+            _rgb_bar.fill_color(color)
+        else:
+            _rgb_bar.fill_color(0x000000)
 
 # ── Voice Assistant ───────────────────────────────────────────────────────────
-
 def _do_voice():
     global _flask_ok
     _rec_sec = [0]
@@ -132,15 +178,21 @@ def _do_voice():
 
     _current_page().on_enter()
 
-
 # ── Setup ─────────────────────────────────────────────────────────────────────
-
 def setup():
-    global _hub, _pages, _sensor_data, _forecast
+    global _hub, _pages, _sensor_data, _forecast, _rgb_bar
 
     M5.begin()
     Speaker.begin()
     Speaker.setVolume(config.SPK_VOLUME)
+    
+    # Initialize Global Hardware LED
+    if _HAS_HARDWARE:
+        try:
+            _rgb_bar = hardware.RGB(io=25, n=10, type="SK6812")
+            _rgb_bar.fill_color(0x000000) # Ensure it's off
+        except Exception as e:
+            print("[Setup] RGB Init error:", e)
 
     M5.Display.fillScreen(C_BG)
     draw_text("SMART SPACE",    75, 95,  0xFFA500, C_BG, 2)
@@ -162,14 +214,15 @@ def setup():
     if _hub: _sensor_data = _hub.read_all()
     _go_to(_current_name)
 
-
 # ── Main Loop ─────────────────────────────────────────────────────────────────
-
 def loop():
     global _sensor_data, _outdoor, _flask_ok, _forecast, _prev_flask_ok
     global _last_sensor, _last_upload, _last_retry, _last_draw, _last_forecast
 
     M5.update()
+    
+    # Run the global LED alert engine every tick (approx 20ms)
+    global_led_alert()
 
     # ── Button A: Prev Page (Short) | Settings (Long) ─────────────────────────
     if M5.BtnA.wasPressed():
@@ -226,7 +279,6 @@ def loop():
         page = _current_page()
         if page:
             if _current_name == "Home":
-                # Pass date string to home page for display
                 if hasattr(page, "set_date"):
                     page.set_date(_date_str())
                 page.update(
@@ -277,7 +329,6 @@ def loop():
             if data: _forecast = data
 
     time.sleep_ms(20)
-
 
 if __name__ == "__main__":
     try:
