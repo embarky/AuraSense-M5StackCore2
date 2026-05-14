@@ -178,7 +178,7 @@ class HomePage:
             M5.Display.drawCenterString(self._time, SCREEN_W//2 + 15, _TIME_Y + 10, 3)
 
         if self._date:
-            date_x = (SCREEN_W // 2) - (len(self._date) * 4)
+            date_x = (SCREEN_W // 2) - (len(self._date) * 4) + 8
             draw_text(self._date, date_x, _TIME_Y + 51, C_MUTED, C_BG, 1)
 
     # ── Outdoor strip ─────────────────────────────────────────────────────────
@@ -262,7 +262,7 @@ class HomePage:
         draw_text("eCO2 (ppm)", x + 10, y + 4, C_MUTED, bg_col, 1)
 
         e_str = fmt(eco2, 0) if eco2 is not None else "--"
-
+        # 【修复】保持整体对称，底部的也统一使用 y+18
         try: Widgets.Label(e_str, x + 10, y + 18, 1.0, col, bg_col, Widgets.FONTS.DejaVu40)
         except: draw_text(e_str, x + 10, y + 24, col, bg_col, 2)
 
