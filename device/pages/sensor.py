@@ -13,14 +13,14 @@ from components import (
 
 # ── Layout Configuration ──────────────────────────────────────────────────────
 _COL_L  = 0      # Left column X coordinate
-_COL_R  = 160    # Right column X coordinate (shifted slightly left to balance)
+_COL_R  = 160    # Right column X coordinate 
 _COL_W  = 160    # Width of each column
-_LH     = 22     # Line height (increased to accommodate Size 2 font for values)
+_LH     = 18     # Restore to normal line height for font size 1
 _SH     = 16     # Section Header height
-_Y0     = STATUS_H + 4
+_Y0     = STATUS_H + 24  # Push everything down to leave space for the top title
 _LBL    = 6      # X offset for labels
-_VAL    = 66     # X offset for values (reduced label area to give values more space)
-_VAL_W  = 94     # Width of the value clearing rectangle (must fit Size 2 font)
+_VAL    = 66     # X offset for values 
+_VAL_W  = 94     # Width of the value clearing rectangle
 
 
 class SensorPage:
@@ -59,11 +59,15 @@ class SensorPage:
     # ── Static Structure (labels + dividers, drawn once) ──────────────────────
 
     def _draw_structure(self) -> None:
+        # --- Page Header ---
+        draw_text("LIVE SENSOR DIAGNOSTICS", _LBL, STATUS_H + 4, C_ORANGE, C_BG, 1)
+        M5.Display.drawLine(0, STATUS_H + 18, SCREEN_W, STATUS_H + 18, C_BORDER)
+
         y = _Y0
 
         # --- Left Column ---
         self._section_title("SHT30", _COL_L, y);      y_sht = y + _SH
-        self._label("Temp",   _COL_L, y_sht)          # Abbreviated for space
+        self._label("Temp",   _COL_L, y_sht)          
         self._label("Hum",    _COL_L, y_sht + _LH)
 
         y_bmp = y_sht + _LH * 2 + 4
@@ -81,7 +85,6 @@ class SensorPage:
         self._label("Motion", _COL_R, y_pir + _SH)
 
         # --- Calculated Section ---
-        # Calculate the starting Y coordinate for the bottom section
         y_calc = _Y0 + _SH + _LH * 2 + 4 + _SH + _LH + 8
         
         # Horizontal divider
@@ -95,7 +98,7 @@ class SensorPage:
         self._label("Comfort", _COL_L, y_calc + _LH)
         self._label("Air Q.",  _COL_R, y_calc + _LH)
 
-        # Vertical divider (top section only, avoids intersecting the horizontal line)
+        # Vertical divider (top section only)
         M5.Display.drawLine(158, _Y0, 158, 
                             _Y0 + _SH + _LH * 2 + 4 + _SH + _LH + 2, 
                             C_BORDER)
@@ -104,13 +107,10 @@ class SensorPage:
         self._y_calc = y_calc 
 
     def _section_title(self, text: str, col_x: int, y: int, color=C_ORANGE) -> None:
-        """Draw section titles: Uses highlighted colors to emphasize modularity."""
         draw_text(text, col_x + _LBL, y, color, C_BG, 1)
 
     def _label(self, text: str, col_x: int, y: int) -> None:
-        """Draw metric labels: Uses a muted color to reduce visual weight."""
-        # Shifted down by 2px to align vertically with the larger Size 2 values
-        draw_text(text, col_x + _LBL, y + 2, C_MUTED, C_BG, 1)
+        draw_text(text, col_x + _LBL, y, C_MUTED, C_BG, 1)
 
     # ── Values (cleared and redrawn every update) ─────────────────────────────
 
@@ -137,7 +137,6 @@ class SensorPage:
 
         # PIR
         motion = d.get("motion", False)
-        # Abbreviated alerts to prevent text overflow when scaled to Size 2
         self._val("ALERT!" if motion else "Clear",
                   C_RED if motion else C_GREEN, _COL_R, y_pir)
 
@@ -155,9 +154,5 @@ class SensorPage:
             self._val(aqi, air_color(aqi), _COL_R, y + _LH)
 
     def _val(self, text: str, color: int, col_x: int, y: int) -> None:
-        """Clear value area then draw with larger font size (Size 2)."""
-        # Increase clear area height (_LH - 2) to cleanly erase the old Size 2 font
-        M5.Display.fillRect(col_x + _VAL, y, _VAL_W, _LH - 2, C_BG)
-        
-        # Core UI update: Draw values in Size 2 to make data the absolute focal point
-        draw_text(text, col_x + _VAL, y, color, C_BG, 2)
+        M5.Display.fillRect(col_x + _VAL, y, _VAL_W, _LH, C_BG)
+        draw_text(text, col_x + _VAL, y, color, C_BG, 1)
