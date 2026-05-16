@@ -34,7 +34,7 @@ from pages.settings import SettingsPage
 REC_WAV           = "/flash/rec.wav"
 SENSOR_INTERVAL   = 3000
 DRAW_INTERVAL     = 2000
-UPLOAD_INTERVAL   = 5000
+UPLOAD_INTERVAL   = 30000  # 30s
 RETRY_INTERVAL    = 10000
 FORECAST_INTERVAL = 3600000
 LONG_PRESS_MS     = 600
