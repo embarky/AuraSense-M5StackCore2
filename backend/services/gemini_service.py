@@ -1,14 +1,5 @@
 """
 services/gemini_service.py — Gemini AI integration.
-
-Responsibilities
-----------------
-- Accept raw WAV audio bytes and return (transcript, reply) using
-  Gemini's native audio understanding (no Whisper required).
-- Maintain a rolling multi-turn conversation history so follow-up
-  questions work naturally.
-- Inject home-sensor context when the user's question is about the
-  indoor environment (temperature, humidity, air quality, …).
 """
 
 from __future__ import annotations
@@ -22,8 +13,6 @@ from google.genai import types
 from config import Config
 
 
-# ── System prompt ─────────────────────────────────────────────────────────────
-
 _SYSTEM_PROMPT = """You are an intelligent home voice assistant with full capability.
 You have access to real-time sensor data and historical records from the user's home.
 
@@ -36,7 +25,11 @@ STRICT RULES:
 6. Use Google Search automatically for real-time external information (weather, news …).
 7. If a [HOME DATA] block is provided, use it to answer questions about the home."""
 
-# Keywords that trigger sensor-context injection.
+_ANNOUNCE_PROMPT = """You are a smart home ambient assistant giving a brief spoken update.
+Speak naturally, like a calm voice assistant. Two to three sentences.
+No markdown, no bullet points. Just plain spoken language.
+Cover indoor air quality, temperature comfort, and outdoor weather."""
+
 _SENSOR_KEYWORDS = {
     "temperature", "humidity", "air quality", "co2", "tvoc", "eco2",
     "yesterday", "last hour", "home", "indoor", "sensor", "reading",
@@ -46,34 +39,22 @@ _SENSOR_KEYWORDS = {
 
 
 class GeminiService:
-    """Stateful wrapper around the Gemini API for the voice-assistant feature."""
 
     def __init__(self) -> None:
         self._client = genai.Client(api_key=Config.GEMINI_API_KEY)
         self._history: list[types.Content] = []
         print(f"[GeminiService] Initialised — model: {Config.GEMINI_MODEL}")
 
-    # ── Public API ────────────────────────────────────────────────────────────
+    # ── Voice assistant ───────────────────────────────────────────────────────
 
     def send_audio(
         self,
         wav_data: bytes,
         sensor_context: Optional[str] = None,
     ) -> tuple[str, str]:
-        """
-        Send WAV audio to Gemini and return (transcript, reply).
-
-        Parameters
-        ----------
-        wav_data:        Raw WAV file bytes recorded by the Core2.
-        sensor_context:  Optional pre-formatted string of recent sensor readings
-                         to inject when the question is about the home.
-        """
         audio_part = types.Part(
             inline_data=types.Blob(mime_type="audio/wav", data=wav_data)
         )
-
-        # Build a temporary user message with the audio (not stored in history).
         current_message = types.Content(role="user", parts=[audio_part])
 
         response = self._client.models.generate_content(
@@ -85,17 +66,16 @@ class GeminiService:
             ),
         )
 
-        raw         = response.text.strip()
-        transcript  = self._extract_heard(raw)
-        reply       = self._extract_reply(raw)
+        raw        = response.text.strip()
+        transcript = self._extract_heard(raw)
+        reply      = self._extract_reply(raw)
 
         print(f"[GeminiService] HEARD: {transcript}")
         print(f"[GeminiService] REPLY: {reply}")
 
-        # Store TEXT versions in history (storing audio would waste tokens).
         if transcript:
             self._history.append(
-                types.Content(role="user",  parts=[types.Part(text=transcript)])
+                types.Content(role="user", parts=[types.Part(text=transcript)])
             )
         self._history.append(
             types.Content(role="model", parts=[types.Part(text=reply)])
@@ -104,27 +84,143 @@ class GeminiService:
         self._trim_history()
         return transcript, reply
 
+    # ── Announcement generation ───────────────────────────────────────────────
+
+    def generate_announcement(
+        self,
+        sensor_data: dict,
+        outdoor: dict,
+        forecast: list,
+    ) -> str:
+        """
+        Generate a spoken ambient announcement based on current sensor data,
+        outdoor weather, and forecast. Called by the /speak route.
+        Returns plain text ready for TTS.
+        """
+        context = self._build_announce_context(sensor_data, outdoor, forecast)
+
+        prompt = (
+            "Based on the following home sensor data, give a brief spoken update "
+            "in English. One or two sentences only.\n\n"
+            + context
+        )
+
+        try:
+            response = self._client.models.generate_content(
+                model=Config.GEMINI_MODEL,
+                contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
+                config=types.GenerateContentConfig(
+                    system_instruction=_ANNOUNCE_PROMPT,
+                ),
+            )
+            text = response.text.strip()
+            print(f"[GeminiService] Announcement: {text}")
+            return text
+        except Exception as exc:
+            print(f"[GeminiService] Announcement failed: {exc}")
+            return ""
+
+    def generate_anomaly_alert(
+        self,
+        sensor_data: dict,
+        anomaly_type: str,
+    ) -> str:
+        """
+        Generate an urgent spoken alert when a sensor anomaly is detected.
+        anomaly_type: 'co2_danger' | 'co2_warning' | 'humidity_low' | 'humidity_high'
+        Returns plain text ready for TTS.
+        """
+        eco2 = sensor_data.get("eco2", 0) or 0
+        tvoc = sensor_data.get("tvoc", 0) or 0
+        hum  = sensor_data.get("humidity", 0) or 0
+        temp = sensor_data.get("temperature", 0) or 0
+
+        descriptions = {
+            "co2_danger":    f"CO2 is critically high at {eco2} ppm",
+            "tvoc_danger":   f"TVOC is dangerously high at {tvoc} ppb",
+            "humidity_low":  f"Humidity is critically low at {hum}%",
+            "humidity_high": f"Humidity is critically high at {hum}%",
+        }
+
+        # Support combined anomaly keys e.g. "co2_danger+tvoc_danger"
+        parts = [descriptions.get(k, k) for k in anomaly_type.split("+")]
+        situation = ". ".join(parts) + ". Immediate ventilation recommended."
+
+        prompt = (
+            f"Home sensor alert: {situation}\n"
+            f"Current readings: temperature {temp}°C, humidity {hum}%, "
+            f"CO2 {eco2} ppm, TVOC {tvoc} ppb.\n"
+            "Give a brief, calm, actionable spoken alert. One sentence only."
+        )
+
+        try:
+            response = self._client.models.generate_content(
+                model=Config.GEMINI_MODEL,
+                contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
+                config=types.GenerateContentConfig(
+                    system_instruction=_ANNOUNCE_PROMPT,
+                ),
+            )
+            text = response.text.strip()
+            print(f"[GeminiService] Alert: {text}")
+            return text
+        except Exception as exc:
+            print(f"[GeminiService] Alert generation failed: {exc}")
+            return situation  # fallback to raw description
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
     def reset_history(self) -> None:
-        """Clear the conversation history (called by the /reset endpoint)."""
         self._history.clear()
         print("[GeminiService] Conversation history cleared.")
 
     @property
     def history_turns(self) -> int:
-        """Number of complete conversation turns currently in memory."""
         return len(self._history) // 2
 
     def needs_sensor_context(self, transcript: str) -> bool:
-        """Return True if the transcript seems to ask about home-sensor data."""
         lower = transcript.lower()
         return any(kw in lower for kw in _SENSOR_KEYWORDS)
-
-    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _build_system_prompt(self, sensor_context: Optional[str]) -> str:
         if not sensor_context:
             return _SYSTEM_PROMPT
         return f"{_SYSTEM_PROMPT}\n\n[HOME DATA]\n{sensor_context}"
+
+    def _build_announce_context(
+        self, sensor_data: dict, outdoor: dict, forecast: list
+    ) -> str:
+        lines = []
+
+        temp = sensor_data.get("temperature")
+        hum  = sensor_data.get("humidity")
+        eco2 = sensor_data.get("eco2")
+        tvoc = sensor_data.get("tvoc")
+        comfort = sensor_data.get("comfort_level", "")
+
+        if temp is not None:
+            lines.append(f"Indoor temperature: {temp}°C ({comfort})")
+        if hum is not None:
+            lines.append(f"Indoor humidity: {hum}%")
+        if eco2 is not None:
+            lines.append(f"CO2: {eco2} ppm")
+        if tvoc is not None:
+            lines.append(f"TVOC: {tvoc} ppb")
+
+        out_temp = outdoor.get("outdoor_temp")
+        out_desc = outdoor.get("outdoor_desc", "")
+        if out_temp is not None:
+            lines.append(f"Outdoor: {round(out_temp)}°C, {out_desc}")
+
+        # Check if rain expected today
+        if forecast:
+            today = forecast[0]
+            pop = today.get("pop", 0)
+            pop_pct = int(pop * 100) if isinstance(pop, float) and pop <= 1 else int(pop)
+            if pop_pct >= 50:
+                lines.append(f"Rain expected today: {pop_pct}% chance, {today.get('precip_mm', 0)}mm")
+
+        return "\n".join(lines)
 
     @staticmethod
     def _extract_heard(raw: str) -> str:

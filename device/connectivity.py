@@ -39,7 +39,6 @@ def wifi_connect(status_cb=None) -> bool:
     _log("Connecting to " + config.WIFI_SSID)
     wlan.connect(config.WIFI_SSID, config.WIFI_PASSWORD)
     
-    # Wait up to 20 seconds for connection
     for _ in range(20):
         if wlan.isconnected():
             _log("WiFi OK: " + wlan.ifconfig()[0], 0x00FF00)
@@ -59,9 +58,8 @@ def is_connected() -> bool:
 
 def sync_ntp() -> bool:
     """
-    Fetch UTC time from NTP. 
-    (Timezone offsets are NO LONGER written to the RTC to prevent background 
-    syncs from overriding them. Offsets are handled dynamically during display).
+    Fetch UTC time from NTP.
+    Timezone offsets are handled dynamically during display.
     """
     if not is_connected():
         print("[NTP] Failed: No WiFi")
@@ -69,7 +67,6 @@ def sync_ntp() -> bool:
 
     try:
         print("[NTP] Syncing with pool.ntp.org...")
-        # Sets the internal RTC to UTC standard time
         ntptime.settime()
         print("[NTP] Success! System time set to UTC.")
         return True
@@ -80,10 +77,10 @@ def sync_ntp() -> bool:
 
 # ── Sensor Upload ─────────────────────────────────────────────────────────────
 
-def upload_sensor_data(sensor_data: dict) -> dict | None:
+def upload_sensor_data(sensor_data: dict):
     """
     Upload sensor readings to the Flask backend.
-    CRITICAL: Uses timeout=3 to prevent the main UI loop from freezing if the server is down.
+    Returns response dict on success, None on failure.
     """
     clean = {k: (v if v is not None else 0) for k, v in sensor_data.items()}
     
@@ -94,8 +91,6 @@ def upload_sensor_data(sensor_data: dict) -> dict | None:
             "Connection":     "close",
             "Content-Length": str(len(payload)),
         }
-        
-        # TIMEOUT ADDED: Prevents the "fake death" of the UI and sensor readings
         resp = requests.post(config.SENSOR_URL, data=payload, headers=headers, timeout=3)
         
         if resp.status_code == 200:
@@ -209,7 +204,7 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
 
 # ── Voice Upload & Playback ───────────────────────────────────────────────────
 
-def upload_voice_and_receive(rec_path: str) -> bytes | None:
+def upload_voice_and_receive(rec_path: str):
     """Uploads the WAV file to the Flask backend and waits for the TTS audio reply."""
     try:
         with open(rec_path, "rb") as f:
@@ -257,6 +252,7 @@ def _vibrate(ms=80, intensity=180):
     except Exception:
         pass
 
+
 # ── Weather API ───────────────────────────────────────────────────────────────
 
 def fetch_forecast():
@@ -274,7 +270,6 @@ def fetch_forecast():
         if resp.status_code == 200:
             result = resp.json()
             resp.close()
-            
             forecast = result.get("forecast", [])
             print("[Weather] Fetched", len(forecast), "days")
             return forecast
@@ -285,4 +280,65 @@ def fetch_forecast():
     except Exception as e:
         print("[Weather] Request Failed (Timeout/Network):", e)
         
+    return None
+
+
+# ── Announcement & Alert ──────────────────────────────────────────────────────
+
+def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
+    """
+    Send current context to backend /speak endpoint.
+    Returns WAV bytes if successful, None otherwise.
+    """
+    if not is_connected():
+        print("[Speak] Failed: No WiFi")
+        return None
+
+    try:
+        payload = json.dumps({
+            "sensor_data": sensor_data,
+            "outdoor":     outdoor,
+            "forecast":    forecast,
+        })
+        url = "http://{}:{}/speak".format(config.SERVER_HOST, config.SERVER_PORT)
+        resp = requests.post(url, data=payload,
+                             headers={"Content-Type": "application/json"}, timeout=10)
+        if resp.status_code == 200:
+            audio = resp.content
+            resp.close()
+            print("[Speak] Received", len(audio), "bytes")
+            return audio
+        resp.close()
+        print("[Speak] Server error HTTP", resp.status_code)
+    except Exception as e:
+        print("[Speak] Failed:", e)
+    return None
+
+
+def speak_alert(sensor_data: dict, anomaly_type: str):
+    """
+    Send anomaly data to backend /alert endpoint.
+    Returns WAV bytes if successful, None otherwise.
+    """
+    if not is_connected():
+        print("[Alert] Failed: No WiFi")
+        return None
+
+    try:
+        payload = json.dumps({
+            "sensor_data":  sensor_data,
+            "anomaly_type": anomaly_type,
+        })
+        url = "http://{}:{}/alert".format(config.SERVER_HOST, config.SERVER_PORT)
+        resp = requests.post(url, data=payload,
+                             headers={"Content-Type": "application/json"}, timeout=10)
+        if resp.status_code == 200:
+            audio = resp.content
+            resp.close()
+            print("[Alert] Received", len(audio), "bytes")
+            return audio
+        resp.close()
+        print("[Alert] Server error HTTP", resp.status_code)
+    except Exception as e:
+        print("[Alert] Failed:", e)
     return None
