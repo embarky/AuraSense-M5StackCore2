@@ -34,7 +34,7 @@ from pages.settings import SettingsPage
 REC_WAV           = "/flash/rec.wav"
 SENSOR_INTERVAL   = 3000
 DRAW_INTERVAL     = 2000
-UPLOAD_INTERVAL   = 30000  # 30s
+UPLOAD_INTERVAL   = 5000
 RETRY_INTERVAL    = 10000
 FORECAST_INTERVAL = 3600000
 LONG_PRESS_MS     = 600
@@ -233,8 +233,10 @@ def _handle_anomaly(now_ms):
     Anomaly alert: LED must be on for ANOMALY_LEAD_MS before alert plays.
     Alert plays once per anomaly type; resets only when anomaly fully clears.
     Timer is NOT reset by brief sensor fluctuations.
+    Red-level anomaly triggers immediate upload to ensure BigQuery records it.
     """
-    global _anomaly_start_ms, _last_anomaly_type
+    global _anomaly_start_ms, _last_anomaly_type, _last_upload, _last_retry, _outdoor, _flask_ok
+
     if _screen_off or not _flask_ok or not is_connected():
         return
 
@@ -251,6 +253,12 @@ def _handle_anomaly(now_ms):
             if elapsed >= ANOMALY_LEAD_MS:
                 print("[Anomaly] Firing alert:", anomaly)
                 _last_anomaly_type = anomaly
+                # Immediately upload to BigQuery so anomaly is recorded
+                result = upload_sensor_data(_sensor_data)
+                if result:
+                    _outdoor, _flask_ok = result, True
+                    _last_upload = now_ms
+                    _last_retry  = now_ms
                 _do_alert(anomaly)
     else:
         # Only reset if already alerted or timer not started
@@ -414,9 +422,11 @@ def loop():
             if _current_name == "Home":
                 if hasattr(page, "set_date"):
                     page.set_date(_date_str())
+                today = _forecast[0] if _forecast else {}
                 page.update(
                     sensor_data=_sensor_data, outdoor=_outdoor,
                     time_str=_time_str(), wifi_ok=is_connected(), flask_ok=_flask_ok,
+                    today_forecast=today,
                 )
             elif _current_name == "Sensors":
                 page.update(
