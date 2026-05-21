@@ -34,7 +34,7 @@ from pages.settings import SettingsPage
 REC_WAV           = "/flash/rec.wav"
 SENSOR_INTERVAL   = 3000
 DRAW_INTERVAL     = 2000
-UPLOAD_INTERVAL   = 5000
+UPLOAD_INTERVAL   = 30000  # 30s
 RETRY_INTERVAL    = 10000
 FORECAST_INTERVAL = 3600000
 LONG_PRESS_MS     = 600
@@ -44,6 +44,7 @@ SCREEN_DIM_MS    = 60000   # 60s idle → dim to 20%
 SCREEN_OFF_MS    = 120000  # 120s idle → screen off
 ANNOUNCE_MS      = 3600000 # 1h between ambient announcements
 ANOMALY_LEAD_MS  = 10000   # LED must be on 10s before alert plays
+ANOMALY_REPEAT_MS = 30000  # repeat alert every 30s while anomaly persists
 
 # ── Global State ──────────────────────────────────────────────────────────────
 _current_name  = "Home"
@@ -68,6 +69,7 @@ _screen_off        = False
 # Anomaly state — LED on for ANOMALY_LEAD_MS before alert plays
 _anomaly_start_ms  = 0     # when current anomaly first appeared
 _last_anomaly_type = None  # type of last alerted anomaly
+_last_alert_ms     = 0     # when last alert was played
 
 # LED state
 _rgb_bar       = None
@@ -235,7 +237,7 @@ def _handle_anomaly(now_ms):
     Timer is NOT reset by brief sensor fluctuations.
     Red-level anomaly triggers immediate upload to ensure BigQuery records it.
     """
-    global _anomaly_start_ms, _last_anomaly_type, _last_upload, _last_retry, _outdoor, _flask_ok
+    global _anomaly_start_ms, _last_anomaly_type, _last_alert_ms, _last_upload, _last_retry, _outdoor, _flask_ok
 
     if _screen_off or not _flask_ok or not is_connected():
         return
@@ -247,12 +249,16 @@ def _handle_anomaly(now_ms):
             # Anomaly just appeared, start timer
             _anomaly_start_ms = now_ms
             print("[Anomaly] Detected:", anomaly, "- waiting", ANOMALY_LEAD_MS // 1000, "s")
-        elif anomaly != _last_anomaly_type:
-            # Check if LED has been on long enough
+        else:
+            # Anomaly same type — check if time to repeat alert
             elapsed = time.ticks_diff(now_ms, _anomaly_start_ms)
-            if elapsed >= ANOMALY_LEAD_MS:
+            since_last = time.ticks_diff(now_ms, _last_alert_ms)
+            if elapsed >= ANOMALY_LEAD_MS and (
+                _last_anomaly_type is None or since_last >= ANOMALY_REPEAT_MS
+            ):
                 print("[Anomaly] Firing alert:", anomaly)
                 _last_anomaly_type = anomaly
+                _last_alert_ms = now_ms
                 # Immediately upload to BigQuery so anomaly is recorded
                 result = upload_sensor_data(_sensor_data)
                 if result:
@@ -268,6 +274,7 @@ def _handle_anomaly(now_ms):
                 print("[Anomaly] Cleared after alert, resetting")
             _anomaly_start_ms  = 0
             _last_anomaly_type = None
+            _last_alert_ms     = 0
         # If timer started but no alert yet, keep timer running through brief dips
 
 
@@ -327,8 +334,9 @@ def setup():
             print("[Setup] RGB Init error:", e)
 
     M5.Display.fillScreen(C_BG)
-    draw_text("SMART SPACE",    75, 95,  0xFFA500, C_BG, 2)
-    draw_text("Initializing...", 95, 125, C_MUTED,  C_BG, 1)
+    Widgets.Label("SMART SPACE",    55, 88,  1.0, 0xFFA500, C_BG, Widgets.FONTS.DejaVu24)
+    Widgets.Label("Initializing...", 88, 126, 1.0, C_MUTED,  C_BG, Widgets.FONTS.DejaVu18)
+
 
     try: _hub = SensorHub()
     except Exception as e: print("[Setup] SensorHub error:", e)
@@ -422,11 +430,9 @@ def loop():
             if _current_name == "Home":
                 if hasattr(page, "set_date"):
                     page.set_date(_date_str())
-                today = _forecast[0] if _forecast else {}
                 page.update(
                     sensor_data=_sensor_data, outdoor=_outdoor,
                     time_str=_time_str(), wifi_ok=is_connected(), flask_ok=_flask_ok,
-                    today_forecast=today,
                 )
             elif _current_name == "Sensors":
                 page.update(
@@ -444,8 +450,11 @@ def loop():
 
     # ── Backend networking ────────────────────────────────────────────────────
     if is_connected() and _sensor_data:
+        # Upload faster during red-level anomaly to ensure all records captured
+        anomaly_active = _check_anomaly() is not None
+        upload_interval = 5000 if anomaly_active else UPLOAD_INTERVAL
         if _flask_ok:
-            if time.ticks_diff(now, _last_upload) >= UPLOAD_INTERVAL:
+            if time.ticks_diff(now, _last_upload) >= upload_interval:
                 _last_upload = now
                 _last_retry  = now
                 result = upload_sensor_data(_sensor_data)
