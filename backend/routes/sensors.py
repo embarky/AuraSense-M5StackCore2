@@ -58,7 +58,7 @@ def receive_sensor_data():
         "pressure":      payload.get("pressure"),
         "eco2":          payload.get("eco2"),
         "tvoc":          payload.get("tvoc"),
-        "motion":        payload.get("motion_detected", False),
+        "motion":        payload.get("motion", False),
         "outdoor_temp":  outdoor.get("temp"),
         "outdoor_desc":  outdoor.get("description"),
         "outdoor_icon":  outdoor.get("icon"),
