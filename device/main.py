@@ -5,6 +5,7 @@
 #   BtnB (Center): Short -> Home Page
 #   BtnC (Right):  Short -> Next Page | Long -> Voice Assistant
 
+import gc
 import time
 import M5
 from M5 import *
@@ -208,6 +209,9 @@ def _do_announce():
     audio = speak_announcement(_sensor_data, _outdoor, _forecast)
     if audio and len(audio) > 44:
         play_wav_from_memory(audio)
+    audio = None
+    gc.collect()
+    print("[Announce] Done. Free mem:", gc.mem_free())
 
 def _do_alert(anomaly_type):
     """Anomaly alert via Gemini + TTS."""
@@ -217,6 +221,9 @@ def _do_alert(anomaly_type):
     audio = speak_alert(_sensor_data, anomaly_type)
     if audio and len(audio) > 44:
         play_wav_from_memory(audio)
+    audio = None
+    gc.collect()
+    print("[Alert] Done. Free mem:", gc.mem_free())
 
 def _handle_announce(now_ms):
     """
@@ -336,7 +343,6 @@ def setup():
     M5.Display.fillScreen(C_BG)
     Widgets.Label("SMART SPACE",    55, 88,  1.0, 0xFFA500, C_BG, Widgets.FONTS.DejaVu24)
     Widgets.Label("Initializing...", 88, 126, 1.0, C_MUTED,  C_BG, Widgets.FONTS.DejaVu18)
-
 
     try: _hub = SensorHub()
     except Exception as e: print("[Setup] SensorHub error:", e)
