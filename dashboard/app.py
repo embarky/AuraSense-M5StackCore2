@@ -3,17 +3,47 @@ dashboard/app.py — Smart Space Streamlit dashboard (Final Production Version).
 """
 import time
 import datetime
+import requests
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 
 from data import (
-    get_current_status, get_last_known_context, get_history, 
+    FLASK_URL, get_current_status, get_last_known_context, get_history, 
     get_daily_aggregates, get_motion_heatmap, get_anomalies, get_anomalies_by_dates, THRESH
 )
 from charts import (
     temp_humidity_chart, co2_tvoc_chart, daily_temp_chart, motion_heatmap_chart
 )
+
+# ── API Helpers for Weather & Location ────────────────────────────────────────
+
+@st.cache_data(ttl=3600)
+def fetch_ip_location():
+    """根据访客 IP 地址获取当前的城市和国家"""
+    try:
+        r = requests.get("http://ip-api.com/json/", timeout=3)
+        if r.status_code == 200:
+            data = r.json()
+            city = data.get("city", "Unknown City")
+            countryCode = data.get("countryCode", "CH")
+            return f"{city}, {countryCode}"
+    except Exception:
+        pass
+    return "Lausanne, CH" 
+
+@st.cache_data(ttl=900)
+def fetch_flask_forecast():
+    """调用后端的 Forecast API 获取气象数据"""
+    try:
+        r = requests.get(f"{FLASK_URL}/api/forecast", timeout=3)
+        if r.status_code == 200:
+            res = r.json()
+            if res.get("status") == "success":
+                return res.get("forecast", [])
+    except Exception as e:
+        print(f"[app] Error fetching forecast: {e}")
+    return []
 
 # ── Page Configuration ────────────────────────────────────────────────────────
 
@@ -80,7 +110,6 @@ def render_live_dashboard():
         last_seen_ts = db_context.get("timestamp", time.time())
         current_metrics = {} 
 
-    # 1A. Top Banner Notification
     if not is_online:
         last_seen_str = pd.to_datetime(last_seen_ts, unit='s').tz_localize('UTC').tz_convert('Europe/Zurich').strftime('%Y-%m-%d %H:%M') if db_context else "No historical records"
         st.warning(f"**⚠️ Sensor Offline.** Real-time metrics are unavailable. Displaying historical data up to: {last_seen_str}.")
@@ -94,7 +123,6 @@ def render_live_dashboard():
         dot = "🟢 Live" if is_online else "🔴 Offline"
         st.markdown(f"<div style='text-align: right; margin-top: 10px; font-weight: 600; color: {'#10B981' if is_online else '#EF4444'}; font-size: 18px;'>{dot}</div>", unsafe_allow_html=True)
 
-    # 1B. Real-time Cards
     st.markdown('<div class="section-label">Real-time Overview</div>', unsafe_allow_html=True)
 
     df_sparklines = get_history(24)
@@ -157,25 +185,111 @@ col_out, col_anom = st.columns([1, 2], gap="large")
 
 with col_out:
     st.markdown('<div class="section-label">Outdoor Context</div>', unsafe_allow_html=True)
-    out_t    = current_metrics.get("outdoor_temp")
-    out_desc = (current_metrics.get("outdoor_desc") or "").title()
+    
+    location_str = fetch_ip_location()
+    forecast_data = fetch_flask_forecast()
     today_fc = df_daily.iloc[-1] if not df_daily.empty else None
 
+    if forecast_data and len(forecast_data) > 0:
+        today_w = forecast_data[0]
+        out_t = current_metrics.get("outdoor_temp")
+        if out_t is None:
+            out_t = today_w.get("feels_like")
+        
+        out_desc = str(today_w.get("description", "")).title()
+        feels_like = today_w.get("feels_like", "—")
+        out_hum = today_w.get("humidity", "—")
+        out_wind = today_w.get("wind", "—") 
+        t_min = today_w.get("temp_min", "—")
+        t_max = today_w.get("temp_max", "—")
+    else:
+        out_t = current_metrics.get("outdoor_temp")
+        out_desc = (current_metrics.get("outdoor_desc") or "").title()
+        feels_like = current_metrics.get("outdoor_feels_like", "—")
+        out_hum = current_metrics.get("outdoor_humidity", "—")
+        out_wind = current_metrics.get("outdoor_wind_speed", "—")
+        t_min = today_fc.get("temp_min", "—") if today_fc is not None else "—"
+        t_max = today_fc.get("temp_max", "—") if today_fc is not None else "—"
+
     if out_t is not None:
-        st.metric("Current Weather", f"{round(out_t)} °C")
-        st.caption(f"🌥️ {out_desc}")
-        if today_fc is not None:
-            t_min = today_fc.get("temp_min", "—")
-            t_max = today_fc.get("temp_max", "—")
-            st.caption(f"📈 Today's Range: {t_min} ~ {t_max} °C")
+        st.caption(f"📍 {location_str} • Updated just now")
+        
+        w_col1, w_col2 = st.columns([1.2, 1])
+        with w_col1:
+            # 完美对齐的主温度：大数字 + 小单位 (Baseline Aligned)
+            st.markdown(
+                f"""
+                <div style="display: flex; align-items: baseline; margin-top: 5px;">
+                    <span style="font-size: 4.2rem; font-weight: 800; color: #111827; line-height: 1;">{round(float(out_t))}</span>
+                    <span style="font-size: 1.6rem; font-weight: 600; color: #6B7280; margin-left: 4px;">°C</span>
+                </div>
+                <div style="font-size: 1.1rem; color: #4B5563; margin-top: 8px; font-weight: 500;">
+                    🌥️ {out_desc}
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+            
+        with w_col2:
+            str_min = round(float(t_min), 1) if t_min != "—" else "—"
+            str_max = round(float(t_max), 1) if t_max != "—" else "—"
+            str_feels = round(float(feels_like), 1) if feels_like != "—" else "—"
+            
+            st.markdown(
+                f"""
+                <div style="text-align: left; margin-top: 5px;">
+                    <div style="color: #6c757d; font-size: 0.85rem;">Today's Range</div>
+                    <div style="font-weight: 600; color: #374151; margin-bottom: 8px;">{str_min}° ~ {str_max}°</div>
+                    <div style="color: #6c757d; font-size: 0.85rem;">Feels Like</div>
+                    <div style="font-weight: 600; color: #374151;">{str_feels} °C</div>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+
+        st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+
+        m1, m2 = st.columns(2)
+        
+        # 自定义渲染湿度，替换掉笨重的 st.metric
+        val_hum = f"{out_hum}" if out_hum != "—" else "—"
+        unit_hum = "%" if out_hum != "—" else ""
+        with m1:
+            st.markdown(
+                f"""
+                <div style="color: #4B5563; font-size: 0.9rem; margin-bottom: 4px;">Humidity</div>
+                <div style="display: flex; align-items: baseline;">
+                    <span style="font-size: 2.2rem; font-weight: 700; color: #111827; line-height: 1;">{val_hum}</span>
+                    <span style="font-size: 1.1rem; font-weight: 600; color: #6B7280; margin-left: 2px;">{unit_hum}</span>
+                </div>
+                """, unsafe_allow_html=True
+            )
+
+        # 自定义渲染风速，同样做基线对齐
+        val_wind = f"{out_wind}" if out_wind != "—" else "—"
+        unit_wind = "km/h" if out_wind != "—" else ""
+        with m2:
+            st.markdown(
+                f"""
+                <div style="color: #4B5563; font-size: 0.9rem; margin-bottom: 4px;">Wind</div>
+                <div style="display: flex; align-items: baseline;">
+                    <span style="font-size: 2.2rem; font-weight: 700; color: #111827; line-height: 1;">{val_wind}</span>
+                    <span style="font-size: 1.1rem; font-weight: 600; color: #6B7280; margin-left: 4px;">{unit_wind}</span>
+                </div>
+                """, unsafe_allow_html=True
+            )
+        
+        st.write("") 
         
         temp = current_metrics.get("indoor_temp")
         if temp:
-            diff = round(temp - out_t, 1)
+            diff = round(float(temp) - float(out_t), 1)
             sign = "+" if diff > 0 else ""
-            st.caption(f"🏠 Indoor is {sign}{diff} °C {'warmer' if diff>0 else 'cooler'}")
+            word = 'warmer' if diff > 0 else 'cooler'
+            st.info(f"🏠 **Indoor is {sign}{diff} °C {word}** than outside", icon="💡")
     else:
         st.markdown("<div style='color:#6c757d; font-size: 14px; margin-top: 10px;'>🌥️ Weather API is currently unreachable.</div>", unsafe_allow_html=True)
+
 
 with col_anom:
     st.markdown('<div class="section-label">System Anomalies & Alerts</div>', unsafe_allow_html=True)
@@ -281,12 +395,10 @@ df_hist = get_history(trend_hours)
 
 ch1, ch2 = st.columns(2)
 with ch1:
-    st.caption("🌡️ Temperature & Humidity Dynamics")
-    st.plotly_chart(temp_humidity_chart(df_hist), use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(temp_humidity_chart(df_hist), use_container_width=True, config={"displayModeBar": False}, key="th_c")
 
 with ch2:
-    st.caption("💨 Air Quality (CO2 & TVOC)")
-    st.plotly_chart(co2_tvoc_chart(df_hist), use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(co2_tvoc_chart(df_hist), use_container_width=True, config={"displayModeBar": False}, key="c2_c")
 
 # ── 4. Long-term Insights ─────────────────────────────────────────────────────
 
@@ -299,6 +411,6 @@ if df_daily.empty and df_motion.empty:
 else:
     h1, h2 = st.columns(2)
     with h1:
-        st.plotly_chart(daily_temp_chart(df_daily), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(daily_temp_chart(df_daily), use_container_width=True, config={"displayModeBar": False}, key="dt_c")
     with h2:
-        st.plotly_chart(motion_heatmap_chart(df_motion), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(motion_heatmap_chart(df_motion), use_container_width=True, config={"displayModeBar": False}, key="mh_c")
