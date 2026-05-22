@@ -161,8 +161,10 @@ def _handle_motion_and_screen(now_ms):
 
     motion = bool(_sensor_data.get("motion", False)) if _sensor_data else False
 
-    # Touch while screen off → wake, no announce
-    if _screen_off and M5.Touch.getCount() > 0:
+    # Touch or button while screen dim or off → wake
+    touched = M5.Touch.getCount() > 0
+    btn_any = M5.BtnA.isPressed() or M5.BtnB.isPressed() or M5.BtnC.isPressed()
+    if (_screen_off or M5.Display.getBrightness() < 100) and (touched or btn_any):
         _last_motion_ms = now_ms
         _screen_off = False
         M5.Display.setBrightness(100)
