@@ -1,9 +1,9 @@
 # sensors.py — Sensor drivers (UIFlow2, confirmed pin assignments).
 #
 # Hardware (confirmed by I2C scan):
-#   ENV3 Unit → PORT.C  SCL=G13  SDA=G14  (SoftI2C, 10kHz)
-#     SHT30   addr 0x44 — temperature & humidity
-#     QMP6988 addr 0x70 — pressure (M5Stack uses QMP6988, not BMP280)
+#   ENV3 Unit → PORT.C  SCL=G13  SDA=G14
+#     SHT30   addr 0x44 — temperature & humidity  } both via ENVUnit
+#     QMP6988 addr 0x70 — pressure                } hardware.I2C(1)
 #   SGP30   → PORT.A  SCL=G33  SDA=G32  (SoftI2C)
 #     addr 0x58 — eCO2 & TVOC
 #   PIR     → PORT.B  GPIO G36
@@ -11,6 +11,8 @@
 import math
 import time
 from machine import SoftI2C, Pin
+from hardware import I2C
+from unit import ENVUnit
 
 
 # ── SHT30 — Temperature & Humidity ───────────────────────────────────────────
@@ -36,86 +38,37 @@ class SHT30:
             return None, None
 
 
-# ── QMP6988 — Atmospheric Pressure ───────────────────────────────────────────
+# ── QMP6988 — Atmospheric Pressure via ENVUnit ───────────────────────────────
 
 class QMP6988:
     """
-    QMP6988 barometric pressure sensor.
-    M5Stack ENV3 Unit uses QMP6988 (addr 0x70), not BMP280 (0x76/0x77).
-    Implements the compensation formula from the QMP6988 datasheet.
+    QMP6988 + SHT30 via ENVUnit official driver on hardware.I2C(1).
+    SoftI2C and hardware.I2C cannot share the same bus — ENVUnit takes over PORT.C.
+    Tested working: I2C(1, scl=13, sda=14) + ENVUnit(i2c, type=3).
     """
-    ADDR = 0x70
-
-    def __init__(self, i2c):
-        self._i2c = i2c
-        # Soft reset
-        self._i2c.writeto_mem(self.ADDR, 0xE0, bytes([0xE6]))
-        time.sleep_ms(20)
-        # Normal mode: temperature ×1, pressure ×8
-        self._i2c.writeto_mem(self.ADDR, 0xF3, bytes([0x6D]))
-        time.sleep_ms(25)
-        # Load OTP calibration coefficients
-        self._cal = self._load_cal()
-
-    def _load_cal(self):
-        """Read 25 bytes of OTP calibration data from 0xA0."""
-        try:
-            d = self._i2c.readfrom_mem(self.ADDR, 0xA0, 25)
-
-            def s20(d, i):
-                """Extract 20-bit signed int from 3 bytes at index i."""
-                v = (d[i] << 12) | (d[i + 1] << 4) | (d[i + 2] >> 4)
-                if v >= (1 << 19):
-                    v -= (1 << 20)
-                return v
-
-            # Calibration coefficients with datasheet scaling factors
-            b00  = s20(d,  0) * 3.0
-            bt1  = s20(d,  2) * 1.0e-2
-            bt2  = s20(d,  4) * 1.0e-4
-            bp01 = s20(d,  6) * 1.0e-2
-            b11  = s20(d,  8) * 1.0e-4
-            bp2  = s20(d, 10) * 1.0e-6
-            b12  = s20(d, 12) * 1.0e-8
-            b21  = s20(d, 14) * 1.0e-10
-            bp3  = s20(d, 16) * 1.0e-12
-            print("[QMP6988] Calibration loaded")
-            return b00, bt1, bt2, bp01, b11, bp2, b12, b21, bp3
-        except Exception as e:
-            print("[QMP6988] cal:", e)
-            return None
+    def __init__(self):
+        i2c = I2C(0, scl=13, sda=14, freq=10000)
+        time.sleep_ms(200)
+        self._env = ENVUnit(i2c=i2c, type=3)
+        print("[QMP6988] ENVUnit OK")
 
     def read(self):
         """Return pressure in hPa, or None on error."""
-        if self._cal is None:
-            return None
         try:
-            # Read 6 bytes: pressure (F7-F9) + temperature (FA-FC)
-            d = self._i2c.readfrom_mem(self.ADDR, 0xF7, 6)
-
-            # Extract 20-bit signed raw values
-            raw_p = ((d[0] << 16) | (d[1] << 8) | d[2]) >> 4
-            raw_t = ((d[3] << 16) | (d[4] << 8) | d[5]) >> 4
-            if raw_p >= (1 << 19): raw_p -= (1 << 20)
-            if raw_t >= (1 << 19): raw_t -= (1 << 20)
-
-            b00, bt1, bt2, bp01, b11, bp2, b12, b21, bp3 = self._cal
-            dp = float(raw_p)
-            dt = float(raw_t)
-
-            # Pressure compensation formula (QMP6988 datasheet section 4.3)
-            p = (b00
-                 + bp01 * dp
-                 + b11  * dp * dt
-                 + bp2  * dp * dp
-                 + b12  * dp * dt * dt
-                 + b21  * dp * dp * dt
-                 + bp3  * dp * dp * dp)
-
-            return round(p / 100.0, 1)   # Pa → hPa
+            return round(self._env.read_pressure(), 1)
         except Exception as e:
             print("[QMP6988]", e)
             return None
+
+    def read_th(self):
+        """Return (temperature °C, humidity %) from ENVUnit, or (None, None)."""
+        try:
+            temp = round(self._env.read_temperature(), 1)
+            hum  = round(self._env.read_humidity(), 1)
+            return temp, hum
+        except Exception as e:
+            print("[QMP6988] TH:", e)
+            return None, None
 
 
 # ── SGP30 — eCO2 & TVOC ──────────────────────────────────────────────────────
@@ -199,19 +152,17 @@ class SensorHub:
     """
     Reads all sensors and returns a flat dict with raw + derived values.
     Instantiate once at startup, call read_all() in the main loop.
+    PORT.C exclusively uses hardware.I2C via ENVUnit (no SoftI2C on same bus).
     """
 
     def __init__(self):
-        # PORT.C: SCL=G13, SDA=G14 (labels swapped vs schematic, confirmed by scan)
-        i2c_c = SoftI2C(scl=Pin(13), sda=Pin(14), freq=10000)
-
-        # PORT.A: SCL=G33, SDA=G32
+        # PORT.A: SCL=G33, SDA=G32 for SGP30 only
         i2c_a = SoftI2C(scl=Pin(33), sda=Pin(32), freq=100000)
 
-        self._sht = self._try_init(lambda: SHT30(i2c_c),    "SHT30")
-        self._qmp = self._try_init(lambda: QMP6988(i2c_c),  "QMP6988")
-        self._sgp = self._try_init(lambda: SGP30(i2c_a),    "SGP30")
-        self._pir = self._try_init(lambda: PIR(36),          "PIR")
+        # PORT.C: exclusively via ENVUnit (handles both SHT30 + QMP6988)
+        self._qmp = self._try_init(lambda: QMP6988(),      "QMP6988")
+        self._sgp = self._try_init(lambda: SGP30(i2c_a),  "SGP30")
+        self._pir = self._try_init(lambda: PIR(36),        "PIR")
         print("[SensorHub] Ready")
 
     @staticmethod
@@ -234,11 +185,9 @@ class SensorHub:
         # ── Raw readings ──────────────────────────────────────
         temp = hum = pressure = None
 
-        if self._sht:
-            temp, hum = self._sht.read()
-
         if self._qmp:
-            pressure = self._qmp.read()
+            temp, hum = self._qmp.read_th()
+            pressure  = self._qmp.read()
 
         eco2 = tvoc = None
         if self._sgp:
