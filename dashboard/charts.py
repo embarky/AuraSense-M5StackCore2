@@ -5,13 +5,23 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
-# ── Color palette ─────────────────────────────────────────────────────────────
+# ── Color Palette ─────────────────────────────────────────────────────────────
 C_BLUE   = "#378ADD"
 C_GREEN  = "#1D9E75"
 C_AMBER  = "#EF9F27"
 C_TEAL   = "#5DCAA5"
 C_RED    = "#E24B4A"
 C_GRID   = "rgba(0,0,0,0.06)"
+
+# -- Activity Colorscale --
+# Maps zero activity to a light gray tint, and increasing activity to shades of blue.
+COLORSCALE_BLUE_ACTIVE = [
+    [0.0, "rgba(241, 239, 232, 1)"], # Zero Activity - Light gray tint
+    [0.2, "rgba(181, 212, 244, 1)"], # Low Activity
+    [0.5, "rgba(133, 183, 235, 1)"], # Moderate Activity
+    [0.8, "rgba(55, 138, 221, 1)"],  # High Activity
+    [1.0, "rgba(24, 95, 165, 1)"]    # Critical Activity
+]
 
 def create_offline_placeholder(height: int = 220) -> go.Figure:
     """
@@ -21,7 +31,7 @@ def create_offline_placeholder(height: int = 220) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0.02)", # Slight gray tint to indicate inactivity
+        plot_bgcolor="rgba(0,0,0,0.02)", 
         height=height,
         margin=dict(l=0, r=0, t=24, b=0),
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
@@ -39,6 +49,7 @@ def create_offline_placeholder(height: int = 220) -> go.Figure:
 
 
 def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
+    """Generates a multi-axis line chart for indoor temperature and humidity."""
     if df.empty or "timestamp" not in df:
         return create_offline_placeholder(height=220)
 
@@ -50,7 +61,7 @@ def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_temp,
             name="Temp (°C)", line=dict(color=C_BLUE, width=2),
-            connectgaps=False,  # Break line on missing data
+            connectgaps=False,  
             hovertemplate="%{y}°C<extra></extra>", yaxis="y1"
         ))
         
@@ -59,14 +70,14 @@ def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
         fig.add_trace(go.Scatter(
             x=x_vals, y=y_hum,
             name="Humidity (%)", line=dict(color=C_GREEN, width=2, dash="dot"),
-            connectgaps=False,  # Break line on missing data
+            connectgaps=False,  
             hovertemplate="%{y}%<extra></extra>", yaxis="y2"
         ))
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=0, r=50, t=24, b=0), height=220,
+        margin=dict(l=0, r=50, t=50, b=0), height=220,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         xaxis=dict(showgrid=False, zeroline=False),
         yaxis=dict(title="°C", showgrid=True, gridcolor=C_GRID, zeroline=False, side="left"),
@@ -76,12 +87,12 @@ def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
 
 
 def co2_tvoc_chart(df: pd.DataFrame) -> go.Figure:
+    """Generates a multi-axis line chart for Air Quality (eCO2 and TVOC)."""
     if df.empty or "eco2" not in df or "tvoc" not in df or "timestamp" not in df:
         return create_offline_placeholder(height=220)
 
     fig = go.Figure()
 
-    # Threshold reference lines
     for y_line, color, label in [(1500, C_RED, "Danger 1500"), (800, C_AMBER, "Warning 800")]:
         fig.add_hline(y=y_line, line=dict(color=color, width=1, dash="dot"),
                       annotation_text=label, annotation_position="top right",
@@ -113,7 +124,7 @@ def co2_tvoc_chart(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=0, r=50, t=24, b=0), height=220,
+        margin=dict(l=0, r=50, t=50, b=0), height=220,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         xaxis=dict(showgrid=False, zeroline=False),
         yaxis=dict(title="ppm", showgrid=True, gridcolor=C_GRID, zeroline=False, side="left", range=[eco2_min, eco2_max]),
@@ -121,10 +132,10 @@ def co2_tvoc_chart(df: pd.DataFrame) -> go.Figure:
     )
     return fig
 
-
 def daily_temp_chart(df: pd.DataFrame) -> go.Figure:
+    """Generates a scatter chart showing daily max, average, and min temperature extremes."""
     if df.empty or "date" not in df:
-        return create_offline_placeholder(height=220)
+        return create_offline_placeholder(height=280)
         
     fig = go.Figure()
     dates = pd.to_datetime(df["date"])
@@ -151,10 +162,11 @@ def daily_temp_chart(df: pd.DataFrame) -> go.Figure:
     ))
 
     fig.update_layout(
+        title=dict(text="Daily Temperature Extremes", font=dict(size=14, color="#6c757d")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=30, r=0, t=24, b=0), height=220,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        margin=dict(l=40, r=20, t=50, b=80), height=280,  
+        legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
         xaxis=dict(showgrid=False, zeroline=False, type="category"),
         yaxis=dict(showgrid=True, gridcolor=C_GRID, zeroline=False, title=dict(text="°C", font=dict(size=11))),
     )
@@ -162,41 +174,89 @@ def daily_temp_chart(df: pd.DataFrame) -> go.Figure:
 
 
 def motion_heatmap_chart(df: pd.DataFrame) -> go.Figure:
-    if df.empty or "day" not in df or "hour" not in df:
-        return create_offline_placeholder(height=200)
+    """Generates a weekly motion activity heatmap synchronized with left chart layout."""
+    if df.empty or ("day" not in df and "date" not in df) or "hour" not in df:
+        return create_offline_placeholder(height=280)
 
-    day_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    today = pd.Timestamp.now().normalize()
+    dates = [today - pd.Timedelta(days=i) for i in range(6, -1, -1)]
     hours = list(range(24))
-    grid = {d: {h: 0 for h in hours} for d in day_order}
     
-    clean_df = df.dropna(subset=["day", "hour"])
+    grid = {d.strftime("%Y-%m-%d"): {h: 0 for h in hours} for d in dates}
+    
+    clean_df = df.dropna(subset=["hour"])
     for _, row in clean_df.iterrows():
-        d_raw = str(row["day"])
-        d = d_raw[:3].capitalize()
         try:
             h = int(float(row["hour"]))
             count = int(float(row.get("motion_count", 0)))
-            if d in grid and h in grid[d]:
-                grid[d][h] = max(grid[d][h], count)
+            
+            if "date" in row and pd.notna(row["date"]):
+                d_str = str(row["date"])[:10]
+            elif "day" in row and pd.notna(row["day"]):
+                d_name = str(row["day"])[:3].capitalize()
+                matched_date = next((d for d in dates if d.strftime("%a") == d_name), None)
+                if not matched_date:
+                    continue
+                d_str = matched_date.strftime("%Y-%m-%d")
+            else:
+                continue
+                
+            if d_str in grid and h in grid[d_str]:
+                grid[d_str][h] = max(grid[d_str][h], count)
         except (ValueError, TypeError):
             continue
 
-    z = [[grid[d][h] for h in hours] for d in day_order]
+    y_labels = []
+    for d in dates:
+        if d == today:
+            y_labels.append("Today")
+        else:
+            y_labels.append(d.strftime("%a %d/%m"))
+
+    z = [[grid[d.strftime("%Y-%m-%d")][h] for h in hours] for d in dates]
+    x_labels = [f"{h}h" for h in hours]
+
+    max_z = max([max(row) for row in z]) if z else 0
+    max_z = max(1, max_z) 
 
     fig = go.Figure(go.Heatmap(
         z=z,
-        x=[f"{h:02d}:00" for h in hours],
-        y=day_order,
-        colorscale=[[0, "#F1EFE8"], [0.25, "#B5D4F4"],
-                    [0.5, "#85B7EB"], [0.75, "#378ADD"], [1, "#185FA5"]],
-        showscale=False,
+        x=x_labels,
+        y=y_labels,
+        colorscale=COLORSCALE_BLUE_ACTIVE,
+        zmin=0,
+        zmax=max_z,
+        showscale=True, 
+        colorbar=dict(
+            title="",
+            orientation="h",
+            yanchor="top",
+            y=-0.25, 
+            x=0.5,
+            xanchor="center",
+            thickness=10,
+            len=0.5,
+            tickmode="array",
+            tickvals=[0, max_z],
+            ticktext=["None", "Active"],
+            outlinewidth=0,
+            tickfont=dict(size=12, color="#6c757d")
+        ),
+        xgap=2, ygap=2,
         hovertemplate="%{y} %{x}: %{z} detections<extra></extra>"
     ))
+    
     fig.update_layout(
+        title=dict(text="Motion Activity & Occupancy", font=dict(size=14, color="#6c757d")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=40, r=0, t=8, b=30), height=200,
-        yaxis=dict(autorange="reversed", showgrid=False, zeroline=False),
-        xaxis=dict(showgrid=False, zeroline=False, tickvals=[f"{h:02d}:00" for h in range(0, 24, 4)])
+        # 共享完全一致的 margin 和 height
+        margin=dict(l=40, r=20, t=50, b=80), height=280,
+        xaxis=dict(showgrid=False, zeroline=False, tickvals=["0h", "6h", "12h", "18h"]),
     )
+    # 【对齐修复】强行锁死 y 轴比例为 1:1，保证每个单元格都是绝对的正方形
+    fig.update_layout(
+        yaxis=dict(scaleanchor="x", scaleratio=1, autorange="reversed", showgrid=False, zeroline=False)
+    )
+    
     return fig

@@ -87,7 +87,10 @@ def get_history(hours: int = 24) -> pd.DataFrame:
     """Return raw sensor readings for the last N hours."""
     query = f"""
         SELECT
-            TIMESTAMP_TRUNC(timestamp, MINUTE) AS timestamp,
+            TIMESTAMP_TRUNC(
+                TIMESTAMP(DATETIME(timestamp, 'Europe/Zurich')),
+                MINUTE
+            ) AS timestamp,
             AVG(temperature)     AS temperature,
             AVG(humidity)        AS humidity,
             AVG(eco2)            AS eco2,
@@ -112,7 +115,7 @@ def get_daily_aggregates(days: int = 7) -> pd.DataFrame:
     """Return daily min/avg/max for temperature, humidity, CO2."""
     query = f"""
         SELECT
-            DATE(timestamp) AS date,
+            DATE(DATETIME(timestamp, 'Europe/Zurich')) AS date,
             ROUND(MIN(temperature), 1)  AS temp_min,
             ROUND(AVG(temperature), 1)  AS temp_avg,
             ROUND(MAX(temperature), 1)  AS temp_max,
@@ -140,8 +143,8 @@ def get_motion_heatmap(days: int = 7) -> pd.DataFrame:
     """Return hourly motion detection counts for heatmap."""
     query = f"""
         SELECT
-            FORMAT_DATE('%a', DATE(timestamp)) AS day,
-            EXTRACT(HOUR FROM timestamp) AS hour,
+            FORMAT_DATE('%a', DATE(DATETIME(timestamp, 'Europe/Zurich'))) AS day,
+            EXTRACT(HOUR FROM DATETIME(timestamp, 'Europe/Zurich')) AS hour,
             SUM(CASE WHEN CAST(motion_detected AS STRING) IN ('true','True','1') THEN 1 ELSE 0 END) AS motion_count
         FROM `{TABLE_ID}`
         WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
@@ -177,7 +180,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
         df = _bq().query(query).to_dataframe()
         if df.empty:
             return df
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
         rows = []
         for _, r in df.iterrows():
@@ -203,7 +206,10 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
 
         result = pd.DataFrame(rows)
         if not result.empty:
-            result = result.sort_values("timestamp", ascending=False).reset_index(drop=True)
+            # Sort by timestamp desc, danger before warning for same timestamp
+            result["_level_order"] = result["level"].map({"danger": 0, "warning": 1})
+            result = result.sort_values(["timestamp", "_level_order"], ascending=[False, True])
+            result = result.drop(columns=["_level_order"]).reset_index(drop=True)
         return result
 
     except Exception as e:
@@ -213,7 +219,6 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
 
 def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
     """Fetch anomalies between two specific exact datetimes (down to the second)."""
-    # 直接格式化传入的 datetime 对象，精确到秒
     start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
     end_str   = end_dt.strftime("%Y-%m-%d %H:%M:%S")
     
@@ -235,7 +240,7 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
     try:
         df = _bq().query(query).to_dataframe()
         if df.empty: return df
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
         rows = []
         for _, r in df.iterrows():
@@ -258,7 +263,9 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
 
         result = pd.DataFrame(rows)
         if not result.empty:
-            result = result.sort_values("timestamp", ascending=False).reset_index(drop=True)
+            result["_level_order"] = result["level"].map({"danger": 0, "warning": 1})
+            result = result.sort_values(["timestamp", "_level_order"], ascending=[False, True])
+            result = result.drop(columns=["_level_order"]).reset_index(drop=True)
         return result
     except Exception as e:
         print(f"[data] get_anomalies_by_dates error: {e}")
@@ -298,4 +305,3 @@ def get_co2_peak_stats(hours: int = 24) -> dict:
     except Exception as e:
         print(f"[data] get_co2_peak_stats error: {e}")
         return {"peak": 0, "avg": 0, "peak_time": None, "mins_above_800": 0, "mins_above_1500": 0}
-    
