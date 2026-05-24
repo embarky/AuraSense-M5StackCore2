@@ -61,6 +61,7 @@ _last_retry    = 0
 _last_draw     = 0
 _last_forecast = 0
 _prev_flask_ok = False
+_last_gc       = 0
 
 # Motion / screen state
 _last_motion_ms    = 0
@@ -204,7 +205,7 @@ def _check_anomaly():
     return "+".join(active) if active else None
 
 def _do_announce():
-    """Hourly ambient announcement via Gemini + TTS."""
+    """Hourly ambient announcement via backend TTS."""
     if not _flask_ok or not is_connected():
         return
     print("[Announce] Generating hourly announcement...")
@@ -216,7 +217,7 @@ def _do_announce():
     print("[Announce] Done. Free mem:", gc.mem_free())
 
 def _do_alert(anomaly_type):
-    """Anomaly alert via Gemini + TTS."""
+    """Anomaly alert via backend TTS."""
     if not _flask_ok or not is_connected():
         return
     print("[Alert] Generating alert:", anomaly_type)
@@ -243,12 +244,11 @@ def _handle_anomaly(now_ms):
     """
     Anomaly alert: LED must be on for ANOMALY_LEAD_MS before alert plays.
     Alert plays once per anomaly type; resets only when anomaly fully clears.
-    Timer is NOT reset by brief sensor fluctuations.
-    Red-level anomaly triggers immediate upload to ensure BigQuery records it.
+    Red-level anomaly triggers immediate upload to ensure backend records it.
     """
     global _anomaly_start_ms, _last_anomaly_type, _last_alert_ms, _last_upload, _last_retry, _outdoor, _flask_ok
 
-    if _screen_off or not _flask_ok or not is_connected():
+    if not _flask_ok or not is_connected():
         return
 
     anomaly = _check_anomaly()
@@ -268,7 +268,7 @@ def _handle_anomaly(now_ms):
                 print("[Anomaly] Firing alert:", anomaly)
                 _last_anomaly_type = anomaly
                 _last_alert_ms = now_ms
-                # Immediately upload to BigQuery so anomaly is recorded
+                # Immediately upload to backend so anomaly is recorded
                 result = upload_sensor_data(_sensor_data)
                 if result:
                     _outdoor, _flask_ok = result, True
@@ -277,20 +277,24 @@ def _handle_anomaly(now_ms):
                 _do_alert(anomaly)
     else:
         # Only reset if already alerted or timer not started
-        # This prevents brief dips from resetting the 30s timer
+        # This prevents brief dips from resetting the timer
         if _last_anomaly_type is not None or _anomaly_start_ms == 0:
             if _anomaly_start_ms != 0:
                 print("[Anomaly] Cleared after alert, resetting")
             _anomaly_start_ms  = 0
             _last_anomaly_type = None
             _last_alert_ms     = 0
-        # If timer started but no alert yet, keep timer running through brief dips
 
 
 # ── Voice Assistant ───────────────────────────────────────────────────────────
 
+def _voice_label(text, color):
+    """Display a centered status label using DejaVu18 font."""
+    M5.Display.fillRect(0, 95, 320, 30, C_BG)
+    Widgets.Label(text, 160 - len(text) * 5, 100, 1.0, color, C_BG, Widgets.FONTS.DejaVu18)
+
 def _do_voice():
-    global _flask_ok
+    global _flask_ok, _hub, _sensor_data
     _rec_sec = [0]
 
     def _status_cb(msg, color):
@@ -305,24 +309,35 @@ def _do_voice():
     if not ok: return
 
     if not is_connected():
-        draw_text(" No WiFi ", 90, 110, C_RED, C_BG, 2)
+        _voice_label("No WiFi", C_RED)
         time.sleep(1)
         _current_page().on_enter()
         return
 
-    draw_text("Uploading...", 75, 110, C_BLUE, C_BG, 2)
+    _voice_label("Uploading...", C_BLUE)
     audio = upload_voice_and_receive(REC_WAV)
 
     if audio and len(audio) > 44:
         _flask_ok = True
-        draw_text(" Playing... ", 80, 110, C_GREEN, C_BG, 2)
+        _voice_label("Playing...", C_GREEN)
         play_wav_from_memory(audio)
     else:
         _flask_ok = False
-        draw_text(" No reply  ", 80, 110, C_MUTED, C_BG, 2)
+        _voice_label("No reply", C_MUTED)
         time.sleep(1)
 
-    _current_page().on_enter()
+    # Trigger natural redraw instead of on_enter() to avoid screen flash
+    global _last_draw
+    _last_draw = 0
+
+    # Re-init QMP6988 after voice assistant (Speaker may disturb I2C bus)
+    try:
+        if _hub and _hub._qmp:
+            from sensors import QMP6988
+            _hub._qmp = QMP6988()
+            print("[Voice] QMP6988 re-initialized")
+    except Exception as e:
+        print("[Voice] QMP6988 re-init failed:", e)
 
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -334,6 +349,14 @@ def setup():
     M5.begin()
     Speaker.begin()
     Speaker.setVolume(config.SPK_VOLUME)
+
+    # Disable M5Things MQTT to prevent network contention with HTTP uploads
+    try:
+        import m5things
+        m5things.stop()
+        print("[Setup] M5Things stopped")
+    except Exception:
+        pass
 
     if _HAS_HARDWARE:
         try:
@@ -478,8 +501,10 @@ def loop():
     if _flask_ok and not _prev_flask_ok:
         data = fetch_forecast()
         if data:
+            _forecast = None   # release old list
             _forecast = data
             _last_forecast = now
+            data = None
     _prev_flask_ok = _flask_ok
 
     # ── Forecast fetch (every hour) ───────────────────────────────────────────
@@ -487,7 +512,17 @@ def loop():
         if time.ticks_diff(now, _last_forecast) >= FORECAST_INTERVAL:
             _last_forecast = now
             data = fetch_forecast()
-            if data: _forecast = data
+            if data:
+                _forecast = None   # release old list
+                _forecast = data
+                data = None
+
+    # ── Periodic GC (every 5 minutes) ────────────────────────────────────────
+    global _last_gc
+    if time.ticks_diff(now, _last_gc) >= 300000:
+        _last_gc = now
+        gc.collect()
+        print("[GC] Free mem:", gc.mem_free())
 
     # ── Hourly announcement (independent of PIR) ──────────────────────────────
     _handle_announce(now)
