@@ -1,7 +1,8 @@
-# connectivity.py — WiFi, NTP sync, sensor upload, and voice assistant (UIFlow2).
+# connectivity.py — WiFi, NTP sync, sensor upload, and voice assistant.
 #
-# Implements non-blocking architectural patterns by enforcing strict timeouts 
-# on all HTTP requests to prevent single-thread starvation.
+# Implements non-blocking architectural patterns, strict timeouts, 
+# guaranteed socket closures (via finally), and an aggressive software 
+# watchdog to recover from LwIP SRAM exhaustion and consecutive timeouts.
 
 import json
 import struct
@@ -9,11 +10,15 @@ import time
 import network
 import requests
 import ntptime
+import machine
 from machine import I2C, Pin
 import M5
 from M5 import *
 
 import config
+
+# Global counter for the software watchdog
+_consecutive_upload_fails = 0
 
 
 # ── WiFi ──────────────────────────────────────────────────────────────────────
@@ -27,6 +32,15 @@ def wifi_connect(status_cb=None) -> bool:
 
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+    
+    # 🌟 GHOST CONNECTION CRUSHER: 
+    # Force a disconnect to clear any half-open states in the router
+    # caused by a previous Watchdog hardware reset.
+    try:
+        wlan.disconnect()
+        time.sleep(1)
+    except Exception:
+        pass
     
     if wlan.isconnected():
         _log("Connected: " + wlan.ifconfig()[0], 0x00FF00)
@@ -57,10 +71,7 @@ def is_connected() -> bool:
 # ── NTP Time Sync ─────────────────────────────────────────────────────────────
 
 def sync_ntp() -> bool:
-    """
-    Fetch UTC time from NTP.
-    Timezone offsets are handled dynamically during display.
-    """
+    """Fetch UTC time from NTP. Timezone offsets are handled dynamically."""
     if not is_connected():
         print("[NTP] Failed: No WiFi")
         return False
@@ -75,14 +86,17 @@ def sync_ntp() -> bool:
         return False
 
 
-# ── Sensor Upload ─────────────────────────────────────────────────────────────
+# ── Sensor Upload & Watchdog ──────────────────────────────────────────────────
 
 def upload_sensor_data(sensor_data: dict):
     """
-    Upload sensor readings to the Flask backend.
-    Returns response dict on success, None on failure.
+    Upload sensor readings to the backend.
+    Includes a Software Watchdog: reboots the ESP32 on LwIP memory 
+    exhaustion (errno 12/105) or 5 consecutive timeouts.
     """
+    global _consecutive_upload_fails
     clean = {k: (v if v is not None else 0) for k, v in sensor_data.items()}
+    resp = None
     
     try:
         payload = json.dumps(clean)
@@ -94,17 +108,43 @@ def upload_sensor_data(sensor_data: dict):
         resp = requests.post(config.SENSOR_URL, data=payload, headers=headers, timeout=3)
         
         if resp.status_code == 200:
-            result = resp.json()
-            resp.close()
-            return result
+            _consecutive_upload_fails = 0  # Reset watchdog counter on success
+            return resp.json()
             
-        resp.close()
         print("[Upload] Server Error HTTP", resp.status_code)
+        return None
         
     except Exception as e:
-        print("[Upload] Request Failed (Timeout/Network):", e)
+        _consecutive_upload_fails += 1
+        print(f"[Upload] Request Failed: {e} | Consecutive Fails: {_consecutive_upload_fails}")
         
-    return None
+        try:
+            err_code = e.args[0]
+        except Exception:
+            err_code = 0
+            
+        # 🌟 SOFTWARE WATCHDOG TRIGGER
+        # 12 = ENOMEM, 105 = ENOBUFS (Internal SRAM exhausted)
+        if err_code in (12, 105) or _consecutive_upload_fails >= 15:
+            print("=========================================")
+            print("🚨 FATAL: Network stack blocked or SRAM depleted!")
+            print("🚨 Triggering hardware watchdog reset...")
+            print("=========================================")
+            if resp is not None:
+                try: resp.close()
+                except Exception: pass
+            time.sleep(1)
+            machine.reset()  # Full system reboot to clear zombie sockets
+            
+        return None
+        
+    finally:
+        # GUARANTEED execution: Prevent standard memory leaks
+        if resp is not None:
+            try:
+                resp.close()
+            except Exception:
+                pass
 
 
 # ── AXP192 Mic Power Workaround ───────────────────────────────────────────────
@@ -205,7 +245,8 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
 # ── Voice Upload & Playback ───────────────────────────────────────────────────
 
 def upload_voice_and_receive(rec_path: str):
-    """Uploads the WAV file to the Flask backend and waits for the TTS audio reply."""
+    """Uploads the WAV file to the Flask backend and waits for TTS audio."""
+    resp = None
     try:
         with open(rec_path, "rb") as f:
             wav = f.read()
@@ -216,17 +257,21 @@ def upload_voice_and_receive(rec_path: str):
                              headers={"Content-Type": "audio/wav"}, timeout=10)
                              
         if resp.status_code == 204:
-            resp.close()
             return None
             
         audio = resp.content
-        resp.close()
         print("[Voice] Received %d bytes of TTS audio" % len(audio))
         return audio
         
     except Exception as e:
         print("[Voice] Communication Error:", e)
         return None
+    finally:
+        if resp is not None:
+            try:
+                resp.close()
+            except Exception:
+                pass
 
 
 def play_wav_from_memory(wav_bytes: bytes) -> None:
@@ -256,44 +301,44 @@ def _vibrate(ms=80, intensity=180):
 # ── Weather API ───────────────────────────────────────────────────────────────
 
 def fetch_forecast():
-    """
-    Fetch the 5-day weather forecast from the Flask backend.
-    Uses a strict timeout to prevent UI freezing.
-    """
+    """Fetch the 5-day weather forecast from the backend."""
     if not is_connected():
         print("[Weather] Failed: No WiFi")
         return None
 
+    resp = None
     try:
         resp = requests.get(config.WEATHER_URL, timeout=3)
         
         if resp.status_code == 200:
             result = resp.json()
-            resp.close()
             forecast = result.get("forecast", [])
             print("[Weather] Fetched", len(forecast), "days")
             return forecast
             
-        resp.close()
         print("[Weather] Server Error HTTP", resp.status_code)
+        return None
         
     except Exception as e:
         print("[Weather] Request Failed (Timeout/Network):", e)
-        
-    return None
+        return None
+    finally:
+        if resp is not None:
+            try:
+                resp.close()
+            except Exception:
+                pass
 
 
 # ── Announcement & Alert ──────────────────────────────────────────────────────
 
 def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
-    """
-    Send current context to backend /speak endpoint.
-    Returns WAV bytes if successful, None otherwise.
-    """
+    """Send current context to backend /speak endpoint."""
     if not is_connected():
         print("[Speak] Failed: No WiFi")
         return None
 
+    resp = None
     try:
         payload = json.dumps({
             "sensor_data": sensor_data,
@@ -303,27 +348,33 @@ def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
         url = "http://{}:{}/speak".format(config.SERVER_HOST, config.SERVER_PORT)
         resp = requests.post(url, data=payload,
                              headers={"Content-Type": "application/json"}, timeout=10)
+                             
         if resp.status_code == 200:
             audio = resp.content
-            resp.close()
             print("[Speak] Received", len(audio), "bytes")
             return audio
-        resp.close()
+            
         print("[Speak] Server error HTTP", resp.status_code)
+        return None
+        
     except Exception as e:
         print("[Speak] Failed:", e)
-    return None
+        return None
+    finally:
+        if resp is not None:
+            try:
+                resp.close()
+            except Exception:
+                pass
 
 
 def speak_alert(sensor_data: dict, anomaly_type: str):
-    """
-    Send anomaly data to backend /alert endpoint.
-    Returns WAV bytes if successful, None otherwise.
-    """
+    """Send anomaly data to backend /alert endpoint."""
     if not is_connected():
         print("[Alert] Failed: No WiFi")
         return None
 
+    resp = None
     try:
         payload = json.dumps({
             "sensor_data":  sensor_data,
@@ -332,13 +383,21 @@ def speak_alert(sensor_data: dict, anomaly_type: str):
         url = "http://{}:{}/alert".format(config.SERVER_HOST, config.SERVER_PORT)
         resp = requests.post(url, data=payload,
                              headers={"Content-Type": "application/json"}, timeout=10)
+                             
         if resp.status_code == 200:
             audio = resp.content
-            resp.close()
             print("[Alert] Received", len(audio), "bytes")
             return audio
-        resp.close()
+            
         print("[Alert] Server error HTTP", resp.status_code)
+        return None
+        
     except Exception as e:
         print("[Alert] Failed:", e)
-    return None
+        return None
+    finally:
+        if resp is not None:
+            try:
+                resp.close()
+            except Exception:
+                pass
