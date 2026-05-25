@@ -6,7 +6,7 @@
 WIFI_SSID     = "lmy"
 WIFI_PASSWORD = "aaaaaaaa"
 
-SERVER_HOST = "34.77.172.194"
+SERVER_HOST = "34.62.132.20"
 SERVER_PORT = 5001
 VOICE_URL   = "http://{}:{}/voice".format(SERVER_HOST, SERVER_PORT)
 SENSOR_URL  = "http://{}:{}/api/sensor_data".format(SERVER_HOST, SERVER_PORT)
