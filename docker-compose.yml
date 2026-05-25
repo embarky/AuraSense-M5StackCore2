@@ -1,0 +1,34 @@
+# docker-compose.yml — AuraSense Full Stack
+# "AuraSense: See the air you breathe."
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: aurasense-backend
+    ports:
+      - "5001:5001"
+    volumes:
+      - "./backend/caa-project-493719-0326a6be8e90.json:/app/credentials.json:ro"
+      - "./backend/config.json:/app/config.json:ro"
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+    container_name: aurasense-dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      FLASK_URL: http://backend:5001
+      GCP_PROJECT: caa-project-493719
+      BQ_DATASET: iot_data
+      BQ_TABLE: sensor_logs
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+    volumes:
+      - "./dashboard/caa-project-493719-0326a6be8e90.json:/app/credentials.json:ro"
+    depends_on:
+      - backend
+    restart: unless-stopped
