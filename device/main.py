@@ -65,9 +65,9 @@ _prev_flask_ok = False
 _last_gc       = 0
 
 # Motion / screen state
-_last_motion_ms    = 0
-_last_announce_ms  = 0
-_screen_off        = False
+_last_motion_ms     = 0
+_last_announce_hour = -1  # Tracks the last hour an announcement was made
+_screen_off         = False
 
 # Anomaly state — LED on for ANOMALY_LEAD_MS before alert plays
 _anomaly_start_ms  = 0     
@@ -241,12 +241,26 @@ def _do_alert(anomaly_type):
     print("[AuraSense | Alert] Done. Free mem:", gc.mem_free())
 
 def _handle_announce(now_ms):
-    global _last_announce_ms
+    global _last_announce_hour
+    
+    # Do not announce if screen is off, backend is down, or no WiFi
     if _screen_off or not _flask_ok or not is_connected():
         return
-    if time.ticks_diff(now_ms, _last_announce_ms) >= ANNOUNCE_MS:
-        _last_announce_ms = now_ms
-        _do_announce()
+        
+    try:
+        # Get real local time (matches display time logic)
+        local_sec = time.time() + (2 * 3600) 
+        t = time.localtime(local_sec)
+        current_hour = t[3]
+        current_minute = t[4]
+
+        # Trigger only exactly at minute 00, once per hour
+        if current_minute == 0 and _last_announce_hour != current_hour:
+            _last_announce_hour = current_hour
+            _do_announce()
+            
+    except Exception as e:
+        print("[AuraSense | Announce] Time check failed:", e)
 
 def _handle_anomaly(now_ms):
     global _anomaly_start_ms, _last_anomaly_type, _last_alert_ms, _last_upload, _last_retry, _outdoor, _flask_ok
@@ -340,7 +354,7 @@ def _do_voice():
 
 def setup():
     global _hub, _pages, _sensor_data, _forecast, _rgb_bar, _outdoor
-    global _last_motion_ms, _last_announce_ms
+    global _last_motion_ms
 
     M5.begin()
     Speaker.begin()
@@ -385,7 +399,6 @@ def setup():
 
     t0 = time.ticks_ms()
     _last_motion_ms   = t0
-    _last_announce_ms = t0
 
     _go_to(_current_name)
 
