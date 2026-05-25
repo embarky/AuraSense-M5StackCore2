@@ -17,21 +17,7 @@ from charts import (
     temp_humidity_chart, co2_tvoc_chart, daily_temp_chart, motion_heatmap_chart
 )
 
-# ── API Helpers for Weather & Location ────────────────────────────────────────
-
-@st.cache_data(ttl=3600)
-def fetch_ip_location():
-    """Fetch the current city and country based on the visitor's IP address"""
-    try:
-        r = requests.get("http://ip-api.com/json/", timeout=3)
-        if r.status_code == 200:
-            data = r.json()
-            city = data.get("city", "Unknown City")
-            countryCode = data.get("countryCode", "CH")
-            return f"{city}, {countryCode}"
-    except Exception:
-        pass
-    return "Lausanne, CH" 
+# ── API Helpers for Weather ───────────────────────────────────────────────────
 
 @st.cache_data(ttl=900)
 def fetch_flask_forecast():
@@ -196,7 +182,12 @@ col_out, col_anom = st.columns([1, 2], gap="large")
 with col_out:
     st.markdown('<div class="section-label">Outdoor Context</div>', unsafe_allow_html=True)
     
-    location_str = fetch_ip_location()
+    # ── 提取后端发送的位置信息，替换掉前端查询 IP ──
+    _latest_state = get_current_status()
+    if not _latest_state.get("location"):
+        _latest_state = get_last_known_context()
+    location_str = _latest_state.get("location", "Unknown Location")
+    
     forecast_data = fetch_flask_forecast()
     today_fc = df_daily.iloc[-1] if not df_daily.empty else None
 
