@@ -23,7 +23,7 @@ COLORSCALE_BLUE_ACTIVE = [
     [1.0, "rgba(24, 95, 165, 1)"]    # Critical Activity
 ]
 
-def create_offline_placeholder(height: int = 220) -> go.Figure:
+def create_offline_placeholder(height: int = 250) -> go.Figure:
     """
     Generates a placeholder chart with an explicit offline watermark 
     when no data is available in the selected time range.
@@ -51,7 +51,7 @@ def create_offline_placeholder(height: int = 220) -> go.Figure:
 def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
     """Generates a multi-axis line chart for indoor temperature and humidity."""
     if df.empty or "timestamp" not in df:
-        return create_offline_placeholder(height=220)
+        return create_offline_placeholder(height=250)
 
     fig = go.Figure()
     x_vals = df["timestamp"]
@@ -75,10 +75,11 @@ def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
         ))
 
     fig.update_layout(
+        title=dict(text="Indoor Climate Trend", font=dict(size=14, color="#6c757d")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=0, r=50, t=50, b=0), height=220,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        margin=dict(l=0, r=50, t=50, b=30), height=250,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
         xaxis=dict(showgrid=False, zeroline=False),
         yaxis=dict(title="°C", showgrid=True, gridcolor=C_GRID, zeroline=False, side="left"),
         yaxis2=dict(title="%", showgrid=False, zeroline=False, overlaying="y", side="right"),
@@ -89,13 +90,16 @@ def temp_humidity_chart(df: pd.DataFrame) -> go.Figure:
 def co2_tvoc_chart(df: pd.DataFrame) -> go.Figure:
     """Generates a multi-axis line chart for Air Quality (eCO2 and TVOC)."""
     if df.empty or "eco2" not in df or "tvoc" not in df or "timestamp" not in df:
-        return create_offline_placeholder(height=220)
+        return create_offline_placeholder(height=250)
 
     fig = go.Figure()
 
-    for y_line, color, label in [(1500, C_RED, "Danger 1500"), (800, C_AMBER, "Warning 800")]:
+    for y_line, color, label, pos in [
+        (1500, C_RED, "Danger 1500", "top right"), 
+        (800, C_AMBER, "Warning 800", "bottom right")
+    ]:
         fig.add_hline(y=y_line, line=dict(color=color, width=1, dash="dot"),
-                      annotation_text=label, annotation_position="top right",
+                      annotation_text=label, annotation_position=pos,
                       annotation_font_size=10)
 
     s_eco2 = df["eco2"].astype(float)
@@ -122,10 +126,11 @@ def co2_tvoc_chart(df: pd.DataFrame) -> go.Figure:
     ))
     
     fig.update_layout(
+        title=dict(text="Air Quality Trend", font=dict(size=14, color="#6c757d")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=0, r=50, t=50, b=0), height=220,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        margin=dict(l=0, r=50, t=50, b=30), height=250,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
         xaxis=dict(showgrid=False, zeroline=False),
         yaxis=dict(title="ppm", showgrid=True, gridcolor=C_GRID, zeroline=False, side="left", range=[eco2_min, eco2_max]),
         yaxis2=dict(title="ppb", showgrid=False, zeroline=False, overlaying="y", side="right", range=[tvoc_min, tvoc_max]),
@@ -165,8 +170,8 @@ def daily_temp_chart(df: pd.DataFrame) -> go.Figure:
         title=dict(text="Daily Temperature Extremes", font=dict(size=14, color="#6c757d")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        margin=dict(l=40, r=20, t=50, b=80), height=280,  
-        legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
+        margin=dict(l=40, r=20, t=50, b=40), height=280,  
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1.0),
         xaxis=dict(showgrid=False, zeroline=False, type="category"),
         yaxis=dict(showgrid=True, gridcolor=C_GRID, zeroline=False, title=dict(text="°C", font=dict(size=11))),
     )
@@ -230,12 +235,12 @@ def motion_heatmap_chart(df: pd.DataFrame) -> go.Figure:
         colorbar=dict(
             title="",
             orientation="h",
-            yanchor="top",
-            y=-0.25, 
-            x=0.5,
-            xanchor="center",
+            yanchor="bottom",
+            y=1.02, 
+            x=1.0,
+            xanchor="right",
             thickness=10,
-            len=0.5,
+            len=0.4,
             tickmode="array",
             tickvals=[0, max_z],
             ticktext=["None", "Active"],
@@ -250,11 +255,9 @@ def motion_heatmap_chart(df: pd.DataFrame) -> go.Figure:
         title=dict(text="Motion Activity & Occupancy", font=dict(size=14, color="#6c757d")),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, sans-serif", size=12),
-        # 共享完全一致的 margin 和 height
-        margin=dict(l=40, r=20, t=50, b=80), height=280,
+        margin=dict(l=40, r=20, t=50, b=40), height=280,
         xaxis=dict(showgrid=False, zeroline=False, tickvals=["0h", "6h", "12h", "18h"]),
     )
-    # 【对齐修复】强行锁死 y 轴比例为 1:1，保证每个单元格都是绝对的正方形
     fig.update_layout(
         yaxis=dict(scaleanchor="x", scaleratio=1, autorange="reversed", showgrid=False, zeroline=False)
     )
