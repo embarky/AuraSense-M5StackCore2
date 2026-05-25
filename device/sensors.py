@@ -1,4 +1,5 @@
-# sensors.py — Sensor drivers (UIFlow2, confirmed pin assignments).
+# sensors.py — Sensor drivers for AuraSense (UIFlow2, confirmed pin assignments).
+# "AuraSense: See the air you breathe."
 #
 # Hardware (confirmed by I2C scan):
 #   ENV3 Unit → PORT.C  SCL=G13  SDA=G14
@@ -34,7 +35,7 @@ class SHT30:
             hum  = round(100 * (d[3] << 8 | d[4]) / 65535.0, 1)
             return temp, hum
         except Exception as e:
-            print("[SHT30]", e)
+            print("[AuraSense | SHT30]", e)
             return None, None
 
 
@@ -50,14 +51,14 @@ class QMP6988:
         i2c = I2C(0, scl=13, sda=14, freq=10000)
         time.sleep_ms(200)
         self._env = ENVUnit(i2c=i2c, type=3)
-        print("[QMP6988] ENVUnit OK")
+        print("[AuraSense | QMP6988] ENVUnit OK")
 
     def read(self):
         """Return pressure in hPa, or None on error."""
         try:
             return round(self._env.read_pressure(), 1)
         except Exception as e:
-            print("[QMP6988]", e)
+            print("[AuraSense | QMP6988]", e)
             return None
 
     def read_th(self):
@@ -67,7 +68,7 @@ class QMP6988:
             hum  = round(self._env.read_humidity(), 1)
             return temp, hum
         except Exception as e:
-            print("[QMP6988] TH:", e)
+            print("[AuraSense | QMP6988] TH:", e)
             return None, None
 
 
@@ -82,7 +83,7 @@ class SGP30:
             self._i2c.writeto(self.ADDR, b'\x20\x03')
             time.sleep_ms(10)
         except Exception as e:
-            print("[SGP30] init:", e)
+            print("[AuraSense | SGP30] init:", e)
 
     def read(self):
         """Return (eco2 ppm, tvoc ppb). Returns (400, 0) on error."""
@@ -94,7 +95,7 @@ class SGP30:
             tvoc = (d[3] << 8) | d[4]
             return eco2, tvoc
         except Exception as e:
-            print("[SGP30]", e)
+            print("[AuraSense | SGP30]", e)
             return 400, 0
 
 
@@ -163,16 +164,16 @@ class SensorHub:
         self._qmp = self._try_init(lambda: QMP6988(),      "QMP6988")
         self._sgp = self._try_init(lambda: SGP30(i2c_a),  "SGP30")
         self._pir = self._try_init(lambda: PIR(36),        "PIR")
-        print("[SensorHub] Ready")
+        print("[AuraSense | SensorHub] Ready")
 
     @staticmethod
     def _try_init(factory, name):
         try:
             obj = factory()
-            print("[SensorHub]", name, "OK")
+            print("[AuraSense | SensorHub]", name, "OK")
             return obj
         except Exception as e:
-            print("[SensorHub]", name, "FAILED:", e)
+            print("[AuraSense | SensorHub]", name, "FAILED:", e)
             return None
 
     def read_all(self) -> dict:

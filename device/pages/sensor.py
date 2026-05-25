@@ -1,4 +1,5 @@
-# pages/sensor.py — Sensor readings with enhanced visual hierarchy.
+# pages/sensor.py — Sensor diagnostic readings for AuraSense.
+# "AuraSense: See the air you breathe."
 
 import M5
 from M5 import *
@@ -60,7 +61,7 @@ class SensorPage:
 
     def _draw_structure(self) -> None:
         # --- Page Header ---
-        draw_text("LIVE SENSOR DIAGNOSTICS", _LBL, STATUS_H + 4, C_ORANGE, C_BG, 1)
+        draw_text("AuraSense DIAGNOSTICS", _LBL, STATUS_H + 4, C_ORANGE, C_BG, 1)
         M5.Display.drawLine(0, STATUS_H + 18, SCREEN_W, STATUS_H + 18, C_BORDER)
 
         y = _Y0
@@ -71,7 +72,7 @@ class SensorPage:
         self._label("Hum",    _COL_L, y_sht + _LH)
 
         y_bmp = y_sht + _LH * 2 + 4
-        self._section_title("BMP280", _COL_L, y_bmp)
+        self._section_title("QMP6988", _COL_L, y_bmp) # Adjusted header based on active driver
         self._label("Press",  _COL_L, y_bmp + _SH)
 
         # --- Right Column ---
@@ -126,7 +127,7 @@ class SensorPage:
         self._val(fmt(d.get("temperature"), 1, "C"), C_CYAN,  _COL_L, y_sht)
         self._val(fmt(d.get("humidity"),    1, "%"), C_TEXT,  _COL_L, y_sht + _LH)
 
-        # BMP280
+        # QMP6988 (Pressure)
         if d.get("pressure") is not None:
             self._val(fmt(d.get("pressure"), 0, "hPa"), C_TEXT, _COL_L, y_bmp)
 

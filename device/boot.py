@@ -1,4 +1,5 @@
-# boot.py — Runs automatically on power-on before main.py.
+# boot.py — AuraSense system bootloader.
+# "AuraSense: See the air you breathe."
 
 # SPDX-FileCopyrightText: 2024 M5Stack Technology CO LTD
 #
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     if boot_option != 0:  # Run main.py directly
         sync.run()
     else:
-        print("Skip sync")
+        print("[AuraSense | Boot] Skip sync")
 
     # copy OTA update file to main.py
     # main_ota_temp.py this file name is fixed
@@ -60,4 +61,3 @@ if __name__ == "__main__":
         os.remove("/flash/main_ota_temp.py")
     except:
         pass
-

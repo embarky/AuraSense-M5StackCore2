@@ -1,4 +1,5 @@
-# connectivity.py — WiFi, NTP sync, sensor upload, and voice assistant.
+# connectivity.py — WiFi, NTP sync, sensor upload, and voice assistant for AuraSense.
+# "AuraSense: See the air you breathe."
 #
 # Implements non-blocking architectural patterns, strict timeouts, 
 # guaranteed socket closures (via finally), and an aggressive software 
@@ -26,7 +27,7 @@ _consecutive_upload_fails = 0
 def wifi_connect(status_cb=None) -> bool:
     """Connect to the configured Wi-Fi network with visual feedback."""
     def _log(msg, color=0xFFFF00):
-        print("[WiFi]", msg)
+        print("[AuraSense | WiFi]", msg)
         if status_cb:
             status_cb(msg, color)
 
@@ -73,16 +74,16 @@ def is_connected() -> bool:
 def sync_ntp() -> bool:
     """Fetch UTC time from NTP. Timezone offsets are handled dynamically."""
     if not is_connected():
-        print("[NTP] Failed: No WiFi")
+        print("[AuraSense | NTP] Failed: No WiFi")
         return False
 
     try:
-        print("[NTP] Syncing with pool.ntp.org...")
+        print("[AuraSense | NTP] Syncing with pool.ntp.org...")
         ntptime.settime()
-        print("[NTP] Success! System time set to UTC.")
+        print("[AuraSense | NTP] Success! System time set to UTC.")
         return True
     except Exception as e:
-        print("[NTP] Error during sync:", e)
+        print("[AuraSense | NTP] Error during sync:", e)
         return False
 
 
@@ -111,12 +112,12 @@ def upload_sensor_data(sensor_data: dict):
             _consecutive_upload_fails = 0  # Reset watchdog counter on success
             return resp.json()
             
-        print("[Upload] Server Error HTTP", resp.status_code)
+        print("[AuraSense | Upload] Server Error HTTP", resp.status_code)
         return None
         
     except Exception as e:
         _consecutive_upload_fails += 1
-        print(f"[Upload] Request Failed: {e} | Consecutive Fails: {_consecutive_upload_fails}")
+        print(f"[AuraSense | Upload] Request Failed: {e} | Consecutive Fails: {_consecutive_upload_fails}")
         
         try:
             err_code = e.args[0]
@@ -157,7 +158,7 @@ def _axp_mic_on():
         i2c.writeto_mem(0x34, 0x96, bytes([0x06]))
         time.sleep(0.3)
     except Exception as e:
-        print("[AXP] Mic power init skipped:", e)
+        print("[AuraSense | AXP] Mic power init skipped:", e)
 
 
 # ── Recording ─────────────────────────────────────────────────────────────────
@@ -172,7 +173,7 @@ def _merge_chunks(paths, out):
                 pcm += f.read()[44:]
             os.remove(p)
         except Exception as e:
-            print("[MERGE] Error reading chunk:", e)
+            print("[AuraSense | MERGE] Error reading chunk:", e)
             
     sr  = config.REC_RATE
     n   = len(pcm)
@@ -194,7 +195,7 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
         held_check = lambda: M5.BtnC.isPressed()
 
     def _log(msg, color=0xFF4444):
-        print("[REC]", msg)
+        print("[AuraSense | REC]", msg)
         if status_cb:
             status_cb(msg, color)
 
@@ -238,7 +239,7 @@ def record_while_held(rec_path: str, held_check=None, status_cb=None) -> bool:
     else:
         _merge_chunks(chunks, rec_path)
         
-    print("[REC] Total %ds recorded" % total)
+    print("[AuraSense | REC] Total %ds recorded" % total)
     return True
 
 
@@ -251,7 +252,7 @@ def upload_voice_and_receive(rec_path: str):
         with open(rec_path, "rb") as f:
             wav = f.read()
             
-        print("[Voice] Uploading %d bytes" % len(wav))
+        print("[AuraSense | Voice] Uploading %d bytes" % len(wav))
         
         resp = requests.post(config.VOICE_URL, data=wav,
                              headers={"Content-Type": "audio/wav"}, timeout=10)
@@ -260,11 +261,11 @@ def upload_voice_and_receive(rec_path: str):
             return None
             
         audio = resp.content
-        print("[Voice] Received %d bytes of TTS audio" % len(audio))
+        print("[AuraSense | Voice] Received %d bytes of TTS audio" % len(audio))
         return audio
         
     except Exception as e:
-        print("[Voice] Communication Error:", e)
+        print("[AuraSense | Voice] Communication Error:", e)
         return None
     finally:
         if resp is not None:
@@ -303,7 +304,7 @@ def _vibrate(ms=80, intensity=180):
 def fetch_forecast():
     """Fetch the 5-day weather forecast from the backend."""
     if not is_connected():
-        print("[Weather] Failed: No WiFi")
+        print("[AuraSense | Weather] Failed: No WiFi")
         return None
 
     resp = None
@@ -313,14 +314,14 @@ def fetch_forecast():
         if resp.status_code == 200:
             result = resp.json()
             forecast = result.get("forecast", [])
-            print("[Weather] Fetched", len(forecast), "days")
+            print("[AuraSense | Weather] Fetched", len(forecast), "days")
             return forecast
             
-        print("[Weather] Server Error HTTP", resp.status_code)
+        print("[AuraSense | Weather] Server Error HTTP", resp.status_code)
         return None
         
     except Exception as e:
-        print("[Weather] Request Failed (Timeout/Network):", e)
+        print("[AuraSense | Weather] Request Failed (Timeout/Network):", e)
         return None
     finally:
         if resp is not None:
@@ -335,7 +336,7 @@ def fetch_forecast():
 def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
     """Send current context to backend /speak endpoint."""
     if not is_connected():
-        print("[Speak] Failed: No WiFi")
+        print("[AuraSense | Speak] Failed: No WiFi")
         return None
 
     resp = None
@@ -351,14 +352,14 @@ def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
                              
         if resp.status_code == 200:
             audio = resp.content
-            print("[Speak] Received", len(audio), "bytes")
+            print("[AuraSense | Speak] Received", len(audio), "bytes")
             return audio
             
-        print("[Speak] Server error HTTP", resp.status_code)
+        print("[AuraSense | Speak] Server error HTTP", resp.status_code)
         return None
         
     except Exception as e:
-        print("[Speak] Failed:", e)
+        print("[AuraSense | Speak] Failed:", e)
         return None
     finally:
         if resp is not None:
@@ -371,7 +372,7 @@ def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
 def speak_alert(sensor_data: dict, anomaly_type: str):
     """Send anomaly data to backend /alert endpoint."""
     if not is_connected():
-        print("[Alert] Failed: No WiFi")
+        print("[AuraSense | Alert] Failed: No WiFi")
         return None
 
     resp = None
@@ -386,14 +387,14 @@ def speak_alert(sensor_data: dict, anomaly_type: str):
                              
         if resp.status_code == 200:
             audio = resp.content
-            print("[Alert] Received", len(audio), "bytes")
+            print("[AuraSense | Alert] Received", len(audio), "bytes")
             return audio
             
-        print("[Alert] Server error HTTP", resp.status_code)
+        print("[AuraSense | Alert] Server error HTTP", resp.status_code)
         return None
         
     except Exception as e:
-        print("[Alert] Failed:", e)
+        print("[AuraSense | Alert] Failed:", e)
         return None
     finally:
         if resp is not None:

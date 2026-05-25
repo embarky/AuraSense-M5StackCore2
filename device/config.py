@@ -1,9 +1,12 @@
-# config.py — Copy to config.py and fill in your values. Never commit config.py.
+# config.py — AuraSense Hardware Configuration.
+# "AuraSense: See the air you breathe."
+#
+# Copy to config.py and fill in your values. Never commit config.py to public repositories.
 
 WIFI_SSID     = "lmy"
 WIFI_PASSWORD = "aaaaaaaa"
 
-SERVER_HOST = "10.76.107.153"
+SERVER_HOST = "10.196.243.153"
 SERVER_PORT = 5001
 VOICE_URL   = "http://{}:{}/voice".format(SERVER_HOST, SERVER_PORT)
 SENSOR_URL  = "http://{}:{}/api/sensor_data".format(SERVER_HOST, SERVER_PORT)
