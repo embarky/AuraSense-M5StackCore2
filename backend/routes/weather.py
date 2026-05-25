@@ -7,7 +7,7 @@ GET /api/forecast    Returns a 5-day daily aggregated weather forecast.
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 
 weather_bp = Blueprint("weather", __name__)
 
@@ -22,8 +22,13 @@ def forecast():
         # Fetch the service instance attached to the main Flask app
         ws = current_app.weather_service
         
-        # Get the aggregated 5-day list
-        forecast_data = ws.get_forecast()
+        # ── Extract real client IP (handles reverse proxies like Nginx) ──
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+        
+        # Pass the client IP to fetch the localized forecast for the device
+        forecast_data = ws.get_forecast(client_ip)
         
         if not forecast_data:
             print("[AuraSense | Weather API] WARNING: Forecast data returned empty.")

@@ -44,8 +44,12 @@ def receive_sensor_data():
     weather = current_app.weather_service
     ai      = current_app.ai_advice_service
 
-    # ── 1. Outdoor weather (cached) ───────────────────────────────────────────
-    outdoor = weather.get_current()
+    # ── 1. Outdoor Weather (Cached using Device IP) ───────────────────────────
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip() 
+        
+    outdoor = weather.get_current(client_ip)
     loc     = weather.location
 
     # ── 2. Update in-memory state ─────────────────────────────────────────────
