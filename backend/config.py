@@ -1,11 +1,12 @@
 """
-config.py — Centralised configuration for the Smart Space backend.
+config.py — Centralized configuration for the AuraSense backend.
+"AuraSense: See the air you breathe."
 
-Sensitive values are stored in config.json (gitignored).
-Copy config.example.json to config.json and fill in your values.
+Sensitive values (API keys, etc.) are stored in config.json (gitignored).
+Copy config.example.json to config.json and fill in your specific values.
 
 The config file is resolved relative to this file's location,
-so the app can be launched from any working directory.
+ensuring the application can be launched from any working directory.
 """
 
 import json
@@ -19,18 +20,18 @@ _CONFIG_PATH = os.path.join(_BASE_DIR, "config.json")
 try:
     with open(_CONFIG_PATH) as f:
         _cfg = json.load(f)
-    print(f"[Config] Loaded from {_CONFIG_PATH}")
+    print(f"[AuraSense | Config] Successfully loaded from {_CONFIG_PATH}")
 except FileNotFoundError:
     raise RuntimeError(
-        f"Config file not found: {_CONFIG_PATH}\n"
-        "Copy config.example.json to config.json and fill in your values."
+        f"[AuraSense | Error] Configuration file not found: {_CONFIG_PATH}\n"
+        "Please copy config.example.json to config.json and populate your values."
     )
 
 
 # ── Config class ──────────────────────────────────────────────────────────────
 
 class Config:
-    # ── Gemini ────────────────────────────────────────────────
+    # ── Gemini (Google AI) ────────────────────────────────────
     GEMINI_API_KEY: str = _cfg["gemini_api_key"]
     GEMINI_MODEL:   str = _cfg.get("gemini_model", "gemini-2.5-flash")
 
@@ -40,34 +41,38 @@ class Config:
     # ── Google Cloud / BigQuery ───────────────────────────────
     GCP_PROJECT:          str = _cfg.get("gcp_project", "")
     GCP_CREDENTIALS_FILE: str = _cfg.get("gcp_credentials_file", "")
-    BQ_DATASET:           str = _cfg.get("bq_dataset", "smart_space")
+    
+    # Updated default dataset name to reflect the new AuraSense branding
+    BQ_DATASET:           str = _cfg.get("bq_dataset", "aurasense")
     BQ_TABLE:             str = _cfg.get("bq_table",   "sensor_readings")
 
     # ── OpenWeatherMap ────────────────────────────────────────
     OPENWEATHER_API_KEY: str = _cfg["openweather_api_key"]
     FALLBACK_CITY:       str = _cfg.get("fallback_city", "Lausanne,CH")
 
-    # ── Cache TTLs (seconds) ──────────────────────────────────
+    # ── Cache TTLs (Time-To-Live in seconds) ──────────────────
     WEATHER_CACHE_TTL:  int = _cfg.get("weather_cache_ttl",  600)
     LOCATION_CACHE_TTL: int = _cfg.get("location_cache_ttl", 3600)
 
     # ── AI Health Advice ──────────────────────────────────────
-    # Minimum seconds between consecutive AI advice generations (quota guard).
+    # Minimum seconds between consecutive AI advice generations (Quota guard)
     AI_COOLDOWN_SECONDS: int = _cfg.get("ai_cooldown_seconds", 600)
 
-    # ── Flask ─────────────────────────────────────────────────
+    # ── Flask Server ──────────────────────────────────────────
     DEBUG: bool = _cfg.get("debug", False)
     PORT:  int  = _cfg.get("port",  5001)
 
 
-# ── Register GCP service account credentials ──────────────────────────────────
+# ── Register GCP Service Account Credentials ──────────────────────────────────
 # Tells the Google SDK where to find the service account key file.
-# Only needed for local development — on Google Cloud, ADC handles this.
+# This is primarily needed for local development. On a deployed Google Cloud 
+# environment (Cloud Run, App Engine), ADC (Application Default Credentials) 
+# handles this automatically.
 
 if Config.GCP_CREDENTIALS_FILE:
     _cred_path = os.path.join(_BASE_DIR, Config.GCP_CREDENTIALS_FILE)
     if os.path.exists(_cred_path):
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _cred_path
-        print(f"[Config] GCP credentials: {_cred_path}")
+        print(f"[AuraSense | Config] GCP credentials bound to: {_cred_path}")
     else:
-        print(f"[Config] WARNING: GCP credentials file not found: {_cred_path}")
+        print(f"[AuraSense | Warning] GCP credentials file not found at: {_cred_path}")

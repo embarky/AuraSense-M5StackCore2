@@ -1,5 +1,6 @@
 """
-dashboard/data.py — Data fetching layer.
+dashboard/data.py — Data fetching layer for AuraSense.
+"AuraSense: See the air you breathe."
 """
 from __future__ import annotations
 
@@ -48,7 +49,7 @@ def get_current_status() -> dict:
         if r.status_code == 200:
             return r.json()
     except requests.exceptions.RequestException as e:
-        print(f"[data] Live backend offline: {e}")
+        print(f"[AuraSense | Data] Live backend offline: {e}")
         pass
     
     return {} 
@@ -76,7 +77,7 @@ def get_last_known_context() -> dict:
                 "location": row.get("location", "Unknown Location")
             }
     except Exception as e:
-        print(f"[data] get_last_known_context error: {e}")
+        print(f"[AuraSense | Data] get_last_known_context error: {e}")
     
     return {}
 
@@ -107,7 +108,7 @@ def get_history(hours: int = 24) -> pd.DataFrame:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         return df
     except Exception as e:
-        print(f"[data] get_history error: {e}")
+        print(f"[AuraSense | Data] get_history error: {e}")
         return pd.DataFrame()
 
 
@@ -135,7 +136,7 @@ def get_daily_aggregates(days: int = 7) -> pd.DataFrame:
             df["date"] = pd.to_datetime(df["date"])
         return df
     except Exception as e:
-        print(f"[data] get_daily_aggregates error: {e}")
+        print(f"[AuraSense | Data] get_daily_aggregates error: {e}")
         return pd.DataFrame()
 
 
@@ -154,7 +155,7 @@ def get_motion_heatmap(days: int = 7) -> pd.DataFrame:
     try:
         return _bq().query(query).to_dataframe()
     except Exception as e:
-        print(f"[data] get_motion_heatmap error: {e}")
+        print(f"[AuraSense | Data] get_motion_heatmap error: {e}")
         return pd.DataFrame()
 
 
@@ -213,7 +214,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
         return result
 
     except Exception as e:
-        print(f"[data] get_anomalies error: {e}")
+        print(f"[AuraSense | Data] get_anomalies error: {e}")
         return pd.DataFrame()
     
 
@@ -268,7 +269,7 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
             result = result.drop(columns=["_level_order"]).reset_index(drop=True)
         return result
     except Exception as e:
-        print(f"[data] get_anomalies_by_dates error: {e}")
+        print(f"[AuraSense | Data] get_anomalies_by_dates error: {e}")
         return pd.DataFrame()
 
 
@@ -303,5 +304,5 @@ def get_co2_peak_stats(hours: int = 24) -> dict:
             "mins_above_1500": int(row["mins_above_1500"]) if pd.notna(row["mins_above_1500"]) else 0,
         }
     except Exception as e:
-        print(f"[data] get_co2_peak_stats error: {e}")
+        print(f"[AuraSense | Data] get_co2_peak_stats error: {e}")
         return {"peak": 0, "avg": 0, "peak_time": None, "mins_above_800": 0, "mins_above_1500": 0}
