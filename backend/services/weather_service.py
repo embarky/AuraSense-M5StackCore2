@@ -1,13 +1,12 @@
 """
-services/weather_service.py — Outdoor weather integration for AuraSense.
-"AuraSense: See the air you breathe."
+services/weather_service.py — Outdoor weather via OpenWeatherMap.
 
 Features
 --------
 - Auto-detects the server's geographic location via IP (ip-api.com).
-- Caches both location and weather results to minimize external API calls.
+- Caches both location and weather results to minimise external API calls.
 - Falls back to a configured city name if IP detection fails.
-- Returns current conditions and a 5-day / 3-hour forecast summary.
+- Returns current conditions and a 5-day / 3-hour forecast.
 """
 
 from __future__ import annotations
@@ -21,18 +20,18 @@ from config import Config
 
 
 class WeatherService:
-    """Fetches and caches outdoor weather data from OpenWeatherMap for the AuraSense platform."""
+    """Fetches and caches outdoor weather data from OpenWeatherMap."""
 
     _OWM_BASE   = "http://api.openweathermap.org/data/2.5"
     _IP_API_URL = "http://ip-api.com/json/?fields=status,lat,lon,city,countryCode,offset,timezone"
 
     def __init__(self) -> None:
         self._location: dict = {
-            "lat":         None,
-            "lon":         None,
-            "city":        Config.FALLBACK_CITY,
-            "offset":      3600,
-            "timezone":    "UTC",
+            "lat":        None,
+            "lon":        None,
+            "city":       Config.FALLBACK_CITY,
+            "offset":     3600,
+            "timezone":   "UTC",
             "last_update": 0,
         }
         self._weather: dict = {
@@ -43,14 +42,14 @@ class WeatherService:
             "icon":        None,
             "last_update": 0,
         }
-        # Pre-warm the location cache on startup
+        # Pre-warm location cache on startup.
         self._refresh_location()
-        print(f"[AuraSense | Weather] Initialized — Location: {self._location['city']}")
+        print(f"[WeatherService] Initialised — location: {self._location['city']}")
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def get_current(self) -> dict:
-        """Return cached current weather, refreshing if the TTL has expired."""
+        """Return cached current weather, refreshing if TTL has expired."""
         if time.time() - self._weather["last_update"] >= Config.WEATHER_CACHE_TTL:
             self._refresh_current()
         return dict(self._weather)
@@ -58,10 +57,9 @@ class WeatherService:
     def get_forecast(self) -> list[dict]:
         """
         Return a 5-day daily aggregated forecast.
- 
+
         Fetches 40 x 3-hourly data points from OWM and collapses them into
-        one summary dictionary per local calendar day. 
-        Fields returned per day:
+        one summary dict per local calendar day.  Fields returned per day:
             day, date, temp_min, temp_max, feels_like, humidity, wind,
             icon, pop, precip_mm, description
         """
@@ -72,16 +70,16 @@ class WeatherService:
             r = requests.get(f"{self._OWM_BASE}/forecast", params=params, timeout=5)
             r.raise_for_status()
             data = r.json()
- 
+
             daily: dict = {}
             offset = self._location.get("offset", 0)
- 
+
             for item in data.get("list", []):
-                # ── Convert UTC timestamp to local calendar date ──────────────
+                # ── Convert UTC timestamp to local calendar date ───────────────
                 local_dt = item["dt"] + offset
                 date_str = time.strftime("%Y-%m-%d", time.gmtime(local_dt))
                 day_name = time.strftime("%a",       time.gmtime(local_dt))
- 
+
                 # ── Extract raw fields ────────────────────────────────────────
                 temp_min    = item["main"]["temp_min"]
                 temp_max    = item["main"]["temp_max"]
@@ -91,18 +89,18 @@ class WeatherService:
                 icon        = item["weather"][0]["icon"]
                 description = item["weather"][0]["description"]
                 pop         = item.get("pop", 0)
-                pod         = item.get("sys", {}).get("pod", "")   # "d" (day) or "n" (night)
- 
-                # Rain / snow fields are absent when precipitation is zero
+                pod         = item.get("sys", {}).get("pod", "")   # "d" or "n"
+
+                # rain / snow fields are absent when precipitation is zero
                 rain_mm  = item.get("rain", {}).get("3h", 0.0)
                 snow_mm  = item.get("snow", {}).get("3h", 0.0)
                 precip   = rain_mm + snow_mm
- 
+
                 if date_str not in daily:
-                    # ── First entry of the day: initialize ────────────────────
+                    # ── First entry of the day: initialise ────────────────────
                     daily[date_str] = {
                         "day":         day_name,
-                        "date":        "{} {}/{}".format(day_name, date_str[8:], date_str[5:7]), # e.g., "Mon 21/08"
+                        "date":        date_str[8:] + "/" + date_str[5:7],  # "13/05"
                         "temp_min":    temp_min,
                         "temp_max":    temp_max,
                         "feels_like":  feels_like,
@@ -116,17 +114,17 @@ class WeatherService:
                     }
                 else:
                     d = daily[date_str]
- 
-                    # Rolling min / max temperature across all 3-hour slots
+
+                    # Rolling min / max temperature across all 3-h slots
                     d["temp_min"]  = min(d["temp_min"],  temp_min)
                     d["temp_max"]  = max(d["temp_max"],  temp_max)
- 
+
                     # Worst-case precipitation probability for the day
                     d["pop"]       = max(d["pop"],       pop)
- 
+
                     # Accumulate total precipitation volume for the day
                     d["precip_mm"] += precip
- 
+
                     # Lock representative values to the first daytime slot
                     if pod == "d" and not d["is_day"]:
                         d["icon"]        = icon
@@ -135,8 +133,8 @@ class WeatherService:
                         d["humidity"]    = humidity
                         d["wind"]        = wind
                         d["is_day"]      = True
- 
-            # ── Post-process: round values, strip internal flag ───────────────
+
+            # ── Post-process: round values, strip internal flag ────────────────
             result = list(daily.values())[:5]
             for d in result:
                 d.pop("is_day", None)
@@ -146,13 +144,12 @@ class WeatherService:
                 d["wind"]      = round(d["wind"],      1)
                 d["precip_mm"] = round(d["precip_mm"], 1)
                 d["pop"]       = round(d["pop"],       2)
- 
-            return result
- 
-        except Exception as exc:
-            print(f"[AuraSense | Weather] Forecast fetch failed: {exc}")
-            return []
 
+            return result
+
+        except Exception as exc:
+            print(f"[WeatherService] Forecast fetch failed: {exc}")
+            return []
     @property
     def location(self) -> dict:
         return dict(self._location)
@@ -160,7 +157,6 @@ class WeatherService:
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _refresh_location(self) -> None:
-        """Fetch the server's geographic location via IP API."""
         if time.time() - self._location["last_update"] < Config.LOCATION_CACHE_TTL:
             return
         try:
@@ -168,19 +164,18 @@ class WeatherService:
             data = r.json()
             if data.get("status") == "success":
                 self._location.update({
-                    "lat":         data["lat"],
-                    "lon":         data["lon"],
-                    "city":        f"{data['city']}, {data['countryCode']}",
-                    "offset":      data.get("offset", 3600),
-                    "timezone":    data.get("timezone", "UTC"),
+                    "lat":        data["lat"],
+                    "lon":        data["lon"],
+                    "city":       f"{data['city']}, {data['countryCode']}",
+                    "offset":     data.get("offset", 3600),
+                    "timezone":   data.get("timezone", "UTC"),
                     "last_update": time.time(),
                 })
-                print(f"[AuraSense | Weather] Location updated: {self._location['city']}")
+                print(f"[WeatherService] Location updated: {self._location['city']}")
         except Exception as exc:
-            print(f"[AuraSense | Weather] IP geolocation failed: {exc}")
+            print(f"[WeatherService] IP geolocation failed: {exc}")
 
     def _refresh_current(self) -> None:
-        """Fetch current weather data from OpenWeatherMap."""
         self._refresh_location()
         try:
             r = requests.get(
@@ -199,7 +194,7 @@ class WeatherService:
                 "last_update": time.time(),
             })
         except Exception as exc:
-            print(f"[AuraSense | Weather] Current weather fetch failed: {exc}")
+            print(f"[WeatherService] Current weather fetch failed: {exc}")
 
     def _build_params(self) -> dict:
         """Build the OWM query parameters, preferring lat/lon over city name."""
