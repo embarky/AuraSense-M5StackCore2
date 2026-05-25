@@ -26,7 +26,6 @@ def forecast():
         client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         if client_ip:
             client_ip = client_ip.split(',')[0].strip()
-            # 【关键修复】：如果被 Docker 桥接网络代理了（变成了局域网IP），则丢弃，防止定位接口报错
             if client_ip.startswith(("172.", "192.168.", "10.")):
                 client_ip = None
         
@@ -40,7 +39,6 @@ def forecast():
                 "message": "Forecast returned empty."
             }), 500
 
-        # ✅ 【核心修复】：把 location 字段加进 JSON 里，一起发给设备端
         return jsonify({
             "status": "success",
             "location": ws.location.get("city", "Unknown"), 

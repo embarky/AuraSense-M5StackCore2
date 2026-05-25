@@ -192,7 +192,8 @@ class HomePage:
             _d = self._outdoor.get("outdoor_desc") or ""
             out_desc = (_d[0].upper() + _d[1:]) if _d else ""
             t_str = "{}C".format(round(out_t))
-            loc = str(self._outdoor.get("location") or "")[:10]
+            
+            loc = str(self._outdoor.get("location") or "Outdoor")[:24]
             
             w1, w2, w3, gap = len(out_desc)*6.2, len(t_str)*6.2, len(loc)*6.2, 12 
             start_x = max(0, int((SCREEN_W - (w1 + w2 + w3 + gap*2)) // 2)) 
