@@ -85,7 +85,7 @@ def sparkline(series, color="#378ADD"):
 @st.fragment(run_every=30)
 def render_live_dashboard():
     live_status = get_current_status()
-    is_online = bool(live_status.get("timestamp")) and (time.time() - live_status.get("timestamp", 0)) < 60
+    is_online = bool(live_status.get("timestamp")) and (time.time() - live_status.get("timestamp", 0)) < 120
 
     if is_online:
         display_location = live_status.get("location", "Unknown Location")

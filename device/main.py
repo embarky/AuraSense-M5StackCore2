@@ -70,14 +70,34 @@ _last_announce_ms  = 0
 _screen_off        = False
 
 # Anomaly state — LED on for ANOMALY_LEAD_MS before alert plays
-_anomaly_start_ms  = 0     # when current anomaly first appeared
-_last_anomaly_type = None  # type of last alerted anomaly
-_last_alert_ms     = 0     # when last alert was played
+_anomaly_start_ms  = 0     
+_last_anomaly_type = None  
+_last_alert_ms     = 0     
 
 # LED state
 _rgb_bar       = None
 _led_state     = False
 _last_led_tick = 0
+
+# ── State Protectors ──────────────────────────────────────────────────────────
+
+def _safe_update_outdoor(new_data: dict) -> bool:
+    """
+    Safely updates the global _outdoor state. 
+    Prevents location amnesia if the backend omits the 'location' key.
+    """
+    global _outdoor, _flask_ok
+    if not new_data:
+        return False
+        
+    old_loc = _outdoor.get("location")
+    _outdoor = new_data
+    
+    if old_loc and not _outdoor.get("location"):
+        _outdoor["location"] = old_loc
+        
+    _flask_ok = True
+    return True
 
 # ── Date/time helpers ─────────────────────────────────────────────────────────
 _DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
@@ -157,12 +177,11 @@ def global_led_alert():
 # ── Motion / Screen ───────────────────────────────────────────────────────────
 
 def _handle_motion_and_screen(now_ms):
-    """PIR + touch -> screen brightness only. No announce logic here."""
+    """PIR + touch -> screen brightness only."""
     global _last_motion_ms, _screen_off
 
     motion = bool(_sensor_data.get("motion", False)) if _sensor_data else False
 
-    # Touch or button while screen dim or off -> wake
     touched = M5.Touch.getCount() > 0
     btn_any = M5.BtnA.isPressed() or M5.BtnB.isPressed() or M5.BtnC.isPressed()
     if (_screen_off or M5.Display.getBrightness() < 100) and (touched or btn_any):
@@ -187,11 +206,6 @@ def _handle_motion_and_screen(now_ms):
 # ── Announce & Alert ──────────────────────────────────────────────────────────
 
 def _check_anomaly():
-    """
-    Return combined anomaly key for all active RED-level alerts.
-    Multiple anomalies are joined e.g. "co2_danger+tvoc_danger".
-    Returns None if no red-level anomaly detected.
-    """
     eco2 = (_sensor_data.get("eco2") or 0)
     tvoc = (_sensor_data.get("tvoc") or 0)
     hum  = (_sensor_data.get("humidity") or 50)
@@ -205,7 +219,6 @@ def _check_anomaly():
     return "+".join(active) if active else None
 
 def _do_announce():
-    """Hourly ambient announcement via backend TTS."""
     if not _flask_ok or not is_connected():
         return
     print("[AuraSense | Announce] Generating hourly announcement...")
@@ -217,7 +230,6 @@ def _do_announce():
     print("[AuraSense | Announce] Done. Free mem:", gc.mem_free())
 
 def _do_alert(anomaly_type):
-    """Anomaly alert via backend TTS."""
     if not _flask_ok or not is_connected():
         return
     print("[AuraSense | Alert] Generating alert:", anomaly_type)
@@ -229,10 +241,6 @@ def _do_alert(anomaly_type):
     print("[AuraSense | Alert] Done. Free mem:", gc.mem_free())
 
 def _handle_announce(now_ms):
-    """
-    Hourly announcement: independent of PIR, skipped when screen off.
-    Runs every loop iteration.
-    """
     global _last_announce_ms
     if _screen_off or not _flask_ok or not is_connected():
         return
@@ -241,11 +249,6 @@ def _handle_announce(now_ms):
         _do_announce()
 
 def _handle_anomaly(now_ms):
-    """
-    Anomaly alert: LED must be on for ANOMALY_LEAD_MS before alert plays.
-    Alert plays once per anomaly type; resets only when anomaly fully clears.
-    Red-level anomaly triggers immediate upload to ensure backend records it.
-    """
     global _anomaly_start_ms, _last_anomaly_type, _last_alert_ms, _last_upload, _last_retry, _outdoor, _flask_ok
 
     if not _flask_ok or not is_connected():
@@ -255,11 +258,9 @@ def _handle_anomaly(now_ms):
 
     if anomaly:
         if _anomaly_start_ms == 0:
-            # Anomaly just appeared, start timer
             _anomaly_start_ms = now_ms
             print("[AuraSense | Anomaly] Detected:", anomaly, "- waiting", ANOMALY_LEAD_MS // 1000, "s")
         else:
-            # Anomaly same type - check if time to repeat alert
             elapsed = time.ticks_diff(now_ms, _anomaly_start_ms)
             since_last = time.ticks_diff(now_ms, _last_alert_ms)
             if elapsed >= ANOMALY_LEAD_MS and (
@@ -268,16 +269,14 @@ def _handle_anomaly(now_ms):
                 print("[AuraSense | Anomaly] Firing alert:", anomaly)
                 _last_anomaly_type = anomaly
                 _last_alert_ms = now_ms
-                # Immediately upload to backend so anomaly is recorded
+                
                 result = upload_sensor_data(_sensor_data)
-                if result:
-                    _outdoor, _flask_ok = result, True
+                if _safe_update_outdoor(result):
                     _last_upload = now_ms
                     _last_retry  = now_ms
+                    
                 _do_alert(anomaly)
     else:
-        # Only reset if already alerted or timer not started
-        # This prevents brief dips from resetting the timer
         if _last_anomaly_type is not None or _anomaly_start_ms == 0:
             if _anomaly_start_ms != 0:
                 print("[AuraSense | Anomaly] Cleared after alert, resetting")
@@ -289,7 +288,6 @@ def _handle_anomaly(now_ms):
 # ── Voice Assistant ───────────────────────────────────────────────────────────
 
 def _voice_label(text, color):
-    """Display a centered status label using DejaVu18 font."""
     M5.Display.fillRect(0, 95, 320, 30, C_BG)
     Widgets.Label(text, 160 - len(text) * 5, 100, 1.0, color, C_BG, Widgets.FONTS.DejaVu18)
 
@@ -326,11 +324,9 @@ def _do_voice():
         _voice_label("No reply", C_MUTED)
         time.sleep(1)
 
-    # Trigger natural redraw instead of on_enter() to avoid screen flash
     global _last_draw
     _last_draw = 0
 
-    # Re-init QMP6988 after voice assistant (Speaker may disturb I2C bus)
     try:
         if _hub and _hub._qmp:
             from sensors import QMP6988
@@ -350,7 +346,6 @@ def setup():
     Speaker.begin()
     Speaker.setVolume(config.SPK_VOLUME)
 
-    # Disable M5Things MQTT to prevent network contention with HTTP uploads
     try:
         import m5things
         m5things.stop()
@@ -380,7 +375,6 @@ def setup():
     if wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)):
         sync_ntp()
         
-        # Unpack the two return values properly
         fc_data, loc_data = fetch_forecast()
         if fc_data is not None:
             _forecast = fc_data
@@ -389,7 +383,6 @@ def setup():
 
     if _hub: _sensor_data = _hub.read_all()
 
-    # Init timers to now so device doesn't immediately trigger
     t0 = time.ticks_ms()
     _last_motion_ms   = t0
     _last_announce_ms = t0
@@ -408,10 +401,9 @@ def loop():
 
     now = time.ticks_ms()
 
-    # Screen brightness from PIR + touch
     _handle_motion_and_screen(now)
 
-    # ── Button A: Prev Page (Short) | Settings (Long) ─────────────────────────
+    # ── Button A ──────────────────────────────────────────────────────────────
     if M5.BtnA.wasPressed():
         t0 = time.ticks_ms()
         is_long = False
@@ -426,12 +418,12 @@ def loop():
             _cycle_nav(-1)
         return
 
-    # ── Button B: Home Page ───────────────────────────────────────────────────
+    # ── Button B ──────────────────────────────────────────────────────────────
     if M5.BtnB.wasPressed():
         _go_to("Home")
         return
 
-    # ── Button C: Next Page (Short) | Voice Assistant (Long) ──────────────────
+    # ── Button C ──────────────────────────────────────────────────────────────
     if M5.BtnC.wasPressed():
         t0 = time.ticks_ms()
         is_long = False
@@ -447,18 +439,18 @@ def loop():
             _cycle_nav(1)
         return
 
-    # ── Weather page touch (per-frame) ────────────────────────────────────────
+    # ── Touch Poll ────────────────────────────────────────────────────────────
     if _current_name == "Weather":
         page = _current_page()
         if page and hasattr(page, "poll_touch"):
             page.poll_touch()
 
-    # ── Sensor read ───────────────────────────────────────────────────────────
+    # ── Sensor Poll ───────────────────────────────────────────────────────────
     if time.ticks_diff(now, _last_sensor) >= SENSOR_INTERVAL:
         _last_sensor = now
         if _hub: _sensor_data = _hub.read_all()
 
-    # ── Screen refresh ────────────────────────────────────────────────────────
+    # ── Screen Redraw ─────────────────────────────────────────────────────────
     if time.ticks_diff(now, _last_draw) >= DRAW_INTERVAL:
         _last_draw = now
         page = _current_page()
@@ -484,29 +476,30 @@ def loop():
             elif _current_name == "Settings":
                 page.update()
 
-    # ── Backend networking ────────────────────────────────────────────────────
+    # ── Backend Networking ────────────────────────────────────────────────────
     if is_connected() and _sensor_data:
-        # Upload faster during red-level anomaly to ensure all records captured
         anomaly_active = _check_anomaly() is not None
         upload_interval = 5000 if anomaly_active else UPLOAD_INTERVAL
+        
         if _flask_ok:
             if time.ticks_diff(now, _last_upload) >= upload_interval:
                 _last_upload = now
                 _last_retry  = now
                 result = upload_sensor_data(_sensor_data)
-                if result: _outdoor, _flask_ok = result, True
-                else: _flask_ok = False
+                
+                if not _safe_update_outdoor(result):
+                    _flask_ok = False
         else:
             if time.ticks_diff(now, _last_retry) >= RETRY_INTERVAL:
                 _last_retry = now
                 result = upload_sensor_data(_sensor_data)
-                if result: _outdoor, _flask_ok = result, True
+                _safe_update_outdoor(result)
 
-    # ── Detect backend just came online -> fetch forecast immediately ──────────
+    # ── Recover Backend State ─────────────────────────────────────────────────
     if _flask_ok and not _prev_flask_ok:
         fc_data, loc_data = fetch_forecast()
         if fc_data is not None:
-            _forecast = None   # release old list
+            _forecast = None
             _forecast = fc_data
             if loc_data:
                 _outdoor["location"] = loc_data
@@ -514,29 +507,26 @@ def loop():
             fc_data = None
     _prev_flask_ok = _flask_ok
 
-    # ── Forecast fetch (every hour) ───────────────────────────────────────────
+    # ── Hourly Forecast ───────────────────────────────────────────────────────
     if is_connected():
         if time.ticks_diff(now, _last_forecast) >= FORECAST_INTERVAL:
             _last_forecast = now
             fc_data, loc_data = fetch_forecast()
             if fc_data is not None:
-                _forecast = None   # release old list
+                _forecast = None
                 _forecast = fc_data
                 if loc_data:
                     _outdoor["location"] = loc_data
                 fc_data = None
 
-    # ── Periodic GC (every 5 minutes) ────────────────────────────────────────
+    # ── Garbage Collection ────────────────────────────────────────────────────
     global _last_gc
     if time.ticks_diff(now, _last_gc) >= 300000:
         _last_gc = now
         gc.collect()
         print("[AuraSense | GC] Free mem:", gc.mem_free())
 
-    # ── Hourly announcement (independent of PIR) ──────────────────────────────
     _handle_announce(now)
-
-    # ── Anomaly alert (LED on 30s before alert plays) ─────────────────────────
     _handle_anomaly(now)
 
     time.sleep_ms(20)
