@@ -182,7 +182,6 @@ col_out, col_anom = st.columns([1, 2], gap="large")
 with col_out:
     st.markdown('<div class="section-label">Outdoor Context</div>', unsafe_allow_html=True)
     
-    # ── 提取后端发送的位置信息，替换掉前端查询 IP ──
     _latest_state = get_current_status()
     if not _latest_state.get("location"):
         _latest_state = get_last_known_context()
@@ -217,7 +216,6 @@ with col_out:
         
         w_col1, w_col2 = st.columns([1.2, 1])
         with w_col1:
-            # 完美对齐的主温度：大数字 + 小单位 (Baseline Aligned)
             st.markdown(
                 f"""
                 <div style="display: flex; align-items: baseline; margin-top: 5px;">
@@ -252,7 +250,6 @@ with col_out:
 
         m1, m2 = st.columns(2)
         
-        # 自定义渲染湿度，替换掉笨重的 st.metric
         val_hum = f"{out_hum}" if out_hum != "—" else "—"
         unit_hum = "%" if out_hum != "—" else ""
         with m1:
@@ -266,7 +263,6 @@ with col_out:
                 """, unsafe_allow_html=True
             )
 
-        # 自定义渲染风速，同样做基线对齐
         val_wind = f"{out_wind}" if out_wind != "—" else "—"
         unit_wind = "km/h" if out_wind != "—" else ""
         with m2:

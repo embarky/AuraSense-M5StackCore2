@@ -302,10 +302,10 @@ def _vibrate(ms=80, intensity=180):
 # ── Weather API ───────────────────────────────────────────────────────────────
 
 def fetch_forecast():
-    """Fetch the 5-day weather forecast from the backend."""
+    """Fetch the 5-day weather forecast and location from the backend."""
     if not is_connected():
         print("[AuraSense | Weather] Failed: No WiFi")
-        return None
+        return None, None 
 
     resp = None
     try:
@@ -314,15 +314,17 @@ def fetch_forecast():
         if resp.status_code == 200:
             result = resp.json()
             forecast = result.get("forecast", [])
-            print("[AuraSense | Weather] Fetched", len(forecast), "days")
-            return forecast
+            location = result.get("location", "Outdoor") 
+            
+            print(f"[AuraSense | Weather] Fetched {len(forecast)} days for {location}")
+            return forecast, location 
             
         print("[AuraSense | Weather] Server Error HTTP", resp.status_code)
-        return None
+        return None, None
         
     except Exception as e:
         print("[AuraSense | Weather] Request Failed (Timeout/Network):", e)
-        return None
+        return None, None
     finally:
         if resp is not None:
             try:

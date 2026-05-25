@@ -42,11 +42,11 @@ FORECAST_INTERVAL = 3600000
 LONG_PRESS_MS     = 600
 
 # Screen / motion / announce intervals (ms)
-SCREEN_DIM_MS    = 60000   # 60s idle → dim to 20%
-SCREEN_OFF_MS    = 120000  # 120s idle → screen off
-ANNOUNCE_MS      = 3600000 # 1h between ambient announcements
-ANOMALY_LEAD_MS  = 10000   # LED must be on 10s before alert plays
-ANOMALY_REPEAT_MS = 30000  # repeat alert every 30s while anomaly persists
+SCREEN_DIM_MS     = 60000   # 60s idle -> dim to 20%
+SCREEN_OFF_MS     = 120000  # 120s idle -> screen off
+ANNOUNCE_MS       = 3600000 # 1h between ambient announcements
+ANOMALY_LEAD_MS   = 10000   # LED must be on 10s before alert plays
+ANOMALY_REPEAT_MS = 30000   # repeat alert every 30s while anomaly persists
 
 # ── Global State ──────────────────────────────────────────────────────────────
 _current_name  = "Home"
@@ -135,8 +135,7 @@ def global_led_alert():
 
     eco2 = (_sensor_data.get("eco2") or 0) if _sensor_data else 0
     tvoc = (_sensor_data.get("tvoc") or 0) if _sensor_data else 0
-
-    hum = (_sensor_data.get("humidity") or 50) if _sensor_data else 50
+    hum  = (_sensor_data.get("humidity") or 50) if _sensor_data else 50
 
     if eco2 > 1500 or tvoc > 660 or hum < 20 or hum > 75:
         color, interval = 0xFF0000, 250
@@ -158,12 +157,12 @@ def global_led_alert():
 # ── Motion / Screen ───────────────────────────────────────────────────────────
 
 def _handle_motion_and_screen(now_ms):
-    """PIR + touch → screen brightness only. No announce logic here."""
+    """PIR + touch -> screen brightness only. No announce logic here."""
     global _last_motion_ms, _screen_off
 
     motion = bool(_sensor_data.get("motion", False)) if _sensor_data else False
 
-    # Touch or button while screen dim or off → wake
+    # Touch or button while screen dim or off -> wake
     touched = M5.Touch.getCount() > 0
     btn_any = M5.BtnA.isPressed() or M5.BtnB.isPressed() or M5.BtnC.isPressed()
     if (_screen_off or M5.Display.getBrightness() < 100) and (touched or btn_any):
@@ -260,7 +259,7 @@ def _handle_anomaly(now_ms):
             _anomaly_start_ms = now_ms
             print("[AuraSense | Anomaly] Detected:", anomaly, "- waiting", ANOMALY_LEAD_MS // 1000, "s")
         else:
-            # Anomaly same type — check if time to repeat alert
+            # Anomaly same type - check if time to repeat alert
             elapsed = time.ticks_diff(now_ms, _anomaly_start_ms)
             since_last = time.ticks_diff(now_ms, _last_alert_ms)
             if elapsed >= ANOMALY_LEAD_MS and (
@@ -344,7 +343,7 @@ def _do_voice():
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 def setup():
-    global _hub, _pages, _sensor_data, _forecast, _rgb_bar
+    global _hub, _pages, _sensor_data, _forecast, _rgb_bar, _outdoor
     global _last_motion_ms, _last_announce_ms
 
     M5.begin()
@@ -380,8 +379,13 @@ def setup():
 
     if wifi_connect(status_cb=lambda msg, col: draw_text(msg, 50, 150, col, C_BG, 1)):
         sync_ntp()
-        data = fetch_forecast()
-        if data: _forecast = data
+        
+        # Unpack the two return values properly
+        fc_data, loc_data = fetch_forecast()
+        if fc_data is not None:
+            _forecast = fc_data
+            if loc_data:
+                _outdoor["location"] = loc_data
 
     if _hub: _sensor_data = _hub.read_all()
 
@@ -498,25 +502,29 @@ def loop():
                 result = upload_sensor_data(_sensor_data)
                 if result: _outdoor, _flask_ok = result, True
 
-    # ── Detect backend just came online → fetch forecast immediately ──────────
+    # ── Detect backend just came online -> fetch forecast immediately ──────────
     if _flask_ok and not _prev_flask_ok:
-        data = fetch_forecast()
-        if data:
+        fc_data, loc_data = fetch_forecast()
+        if fc_data is not None:
             _forecast = None   # release old list
-            _forecast = data
+            _forecast = fc_data
+            if loc_data:
+                _outdoor["location"] = loc_data
             _last_forecast = now
-            data = None
+            fc_data = None
     _prev_flask_ok = _flask_ok
 
     # ── Forecast fetch (every hour) ───────────────────────────────────────────
     if is_connected():
         if time.ticks_diff(now, _last_forecast) >= FORECAST_INTERVAL:
             _last_forecast = now
-            data = fetch_forecast()
-            if data:
+            fc_data, loc_data = fetch_forecast()
+            if fc_data is not None:
                 _forecast = None   # release old list
-                _forecast = data
-                data = None
+                _forecast = fc_data
+                if loc_data:
+                    _outdoor["location"] = loc_data
+                fc_data = None
 
     # ── Periodic GC (every 5 minutes) ────────────────────────────────────────
     global _last_gc

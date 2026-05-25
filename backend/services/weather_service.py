@@ -154,7 +154,7 @@ class WeatherService:
         if not ip_changed and time.time() - self._location["last_update"] < Config.LOCATION_CACHE_TTL:
             return
             
-        # 动态构建 URL：如果有 client_ip 则查询该 IP，否则留空查询服务器自身 IP
+        # construct the query URL, ensuring we don't send private IPs to the geolocation API
         query_ip = f"{client_ip}?" if client_ip else "?"
         url = f"http://ip-api.com/json/{query_ip}fields=status,lat,lon,city,countryCode,offset,timezone"
 
