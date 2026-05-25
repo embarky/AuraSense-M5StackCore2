@@ -119,9 +119,9 @@ class WeatherPage:
         wind = str(day.get("wind", "--")) + " m/s"
         rx = SCREEN_W - 10
 
-        self._draw_right("Humidity", rx, _HERO_Y + 32, _SUB, C_CARD)
-        self._draw_right(hum,        rx, _HERO_Y + 44, C_TEXT, C_CARD)
-        self._draw_right("Wind",     rx, _HERO_Y + 56, _SUB, C_CARD)
+        self._draw_right("Humidity", rx, _HERO_Y + 26, _SUB, C_CARD)
+        self._draw_right(hum,        rx, _HERO_Y + 42, C_TEXT, C_CARD)
+        self._draw_right("Wind",     rx, _HERO_Y + 54, _SUB, C_CARD)
         self._draw_right(wind,       rx, _HERO_Y + 68, C_TEXT, C_CARD)
 
     # ── Rain Strip ────────────────────────────────────────────────────────────
