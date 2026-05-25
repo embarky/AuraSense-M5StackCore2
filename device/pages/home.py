@@ -1,4 +1,5 @@
-# pages/home.py — Smart Space home dashboard (UIFlow2).
+# pages/home.py — AuraSense home dashboard (UIFlow2).
+# "AuraSense: See the air you breathe."
 
 import M5
 from M5 import *

@@ -1,4 +1,7 @@
-# config.py — Copy to config.py and fill in your values. Never commit config.py.
+# config.py — AuraSense Hardware Configuration.
+# "AuraSense: See the air you breathe."
+#
+# Copy to config.py and fill in your values. Never commit config.py to public repositories.
 
 WIFI_SSID     = ""
 WIFI_PASSWORD = ""

@@ -1,4 +1,5 @@
-# main.py — Smart Space entry point (UIFlow2).
+# main.py — AuraSense entry point (UIFlow2).
+# "AuraSense: See the air you breathe."
 #
 # Interaction Logic:
 #   BtnA (Left):   Short -> Prev Page | Long (600ms) -> Enter Settings
@@ -208,25 +209,25 @@ def _do_announce():
     """Hourly ambient announcement via backend TTS."""
     if not _flask_ok or not is_connected():
         return
-    print("[Announce] Generating hourly announcement...")
+    print("[AuraSense | Announce] Generating hourly announcement...")
     audio = speak_announcement(_sensor_data, _outdoor, _forecast)
     if audio and len(audio) > 44:
         play_wav_from_memory(audio)
     audio = None
     gc.collect()
-    print("[Announce] Done. Free mem:", gc.mem_free())
+    print("[AuraSense | Announce] Done. Free mem:", gc.mem_free())
 
 def _do_alert(anomaly_type):
     """Anomaly alert via backend TTS."""
     if not _flask_ok or not is_connected():
         return
-    print("[Alert] Generating alert:", anomaly_type)
+    print("[AuraSense | Alert] Generating alert:", anomaly_type)
     audio = speak_alert(_sensor_data, anomaly_type)
     if audio and len(audio) > 44:
         play_wav_from_memory(audio)
     audio = None
     gc.collect()
-    print("[Alert] Done. Free mem:", gc.mem_free())
+    print("[AuraSense | Alert] Done. Free mem:", gc.mem_free())
 
 def _handle_announce(now_ms):
     """
@@ -257,7 +258,7 @@ def _handle_anomaly(now_ms):
         if _anomaly_start_ms == 0:
             # Anomaly just appeared, start timer
             _anomaly_start_ms = now_ms
-            print("[Anomaly] Detected:", anomaly, "- waiting", ANOMALY_LEAD_MS // 1000, "s")
+            print("[AuraSense | Anomaly] Detected:", anomaly, "- waiting", ANOMALY_LEAD_MS // 1000, "s")
         else:
             # Anomaly same type — check if time to repeat alert
             elapsed = time.ticks_diff(now_ms, _anomaly_start_ms)
@@ -265,7 +266,7 @@ def _handle_anomaly(now_ms):
             if elapsed >= ANOMALY_LEAD_MS and (
                 _last_anomaly_type is None or since_last >= ANOMALY_REPEAT_MS
             ):
-                print("[Anomaly] Firing alert:", anomaly)
+                print("[AuraSense | Anomaly] Firing alert:", anomaly)
                 _last_anomaly_type = anomaly
                 _last_alert_ms = now_ms
                 # Immediately upload to backend so anomaly is recorded
@@ -280,7 +281,7 @@ def _handle_anomaly(now_ms):
         # This prevents brief dips from resetting the timer
         if _last_anomaly_type is not None or _anomaly_start_ms == 0:
             if _anomaly_start_ms != 0:
-                print("[Anomaly] Cleared after alert, resetting")
+                print("[AuraSense | Anomaly] Cleared after alert, resetting")
             _anomaly_start_ms  = 0
             _last_anomaly_type = None
             _last_alert_ms     = 0
@@ -335,9 +336,9 @@ def _do_voice():
         if _hub and _hub._qmp:
             from sensors import QMP6988
             _hub._qmp = QMP6988()
-            print("[Voice] QMP6988 re-initialized")
+            print("[AuraSense | Voice] QMP6988 re-initialized")
     except Exception as e:
-        print("[Voice] QMP6988 re-init failed:", e)
+        print("[AuraSense | Voice] QMP6988 re-init failed:", e)
 
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -354,7 +355,7 @@ def setup():
     try:
         import m5things
         m5things.stop()
-        print("[Setup] M5Things stopped")
+        print("[AuraSense | Setup] M5Things stopped")
     except Exception:
         pass
 
@@ -363,14 +364,14 @@ def setup():
             _rgb_bar = hardware.RGB(io=25, n=10, type="SK6812")
             _rgb_bar.fill_color(0x000000)
         except Exception as e:
-            print("[Setup] RGB Init error:", e)
+            print("[AuraSense | Setup] RGB Init error:", e)
 
     M5.Display.fillScreen(C_BG)
-    Widgets.Label("SMART SPACE",    55, 88,  1.0, 0xFFA500, C_BG, Widgets.FONTS.DejaVu24)
+    Widgets.Label("AuraSense",    55, 88,  1.0, 0xFFA500, C_BG, Widgets.FONTS.DejaVu24)
     Widgets.Label("Initializing...", 88, 126, 1.0, C_MUTED,  C_BG, Widgets.FONTS.DejaVu18)
 
     try: _hub = SensorHub()
-    except Exception as e: print("[Setup] SensorHub error:", e)
+    except Exception as e: print("[AuraSense | Setup] SensorHub error:", e)
 
     _pages["Home"]     = HomePage()
     _pages["Sensors"]  = SensorPage()
@@ -522,7 +523,7 @@ def loop():
     if time.ticks_diff(now, _last_gc) >= 300000:
         _last_gc = now
         gc.collect()
-        print("[GC] Free mem:", gc.mem_free())
+        print("[AuraSense | GC] Free mem:", gc.mem_free())
 
     # ── Hourly announcement (independent of PIR) ──────────────────────────────
     _handle_announce(now)

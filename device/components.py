@@ -1,4 +1,5 @@
-# components.py — Shared UI constants and helpers (UIFlow2).
+# components.py — Shared UI constants and helpers for AuraSense (UIFlow2).
+# "AuraSense: See the air you breathe."
 
 import M5
 from M5 import *
@@ -28,8 +29,8 @@ PAGES = ["Home", "Sensors", "Weather"]
 
 # ── Status bar fixed x positions ──────────────────────────────────────────────
 _X_FLASK = 306   # Flask status dot
-_X_WIFI  = 272   # "WiFi" text
-_X_REC   = 205   # "REC" indicator
+_X_WIFI  = 276   # "WiFi" text
+_X_REC   = 218   # "REC" indicator
 
 
 def draw_text(text, x: int, y: int, color: int = C_TEXT,
@@ -47,7 +48,7 @@ def draw_status_bar(time_str: str = "",
     draw_text(time_str, 5, 4, C_MUTED, C_PANEL, 1)
     
     if rec_sec > 0:
-        draw_text("REC {}s".format(rec_sec), _X_REC + 12, 4, C_RED, C_PANEL, 1)
+        draw_text("REC {}s".format(rec_sec), _X_REC + 12, 4, C_RED, C_BG, 1)
         M5.Display.fillRect(_X_REC, 6, 8, 8, C_RED)
 
     draw_text("WiFi", _X_WIFI, 4, C_GREEN if wifi else C_MUTED, C_PANEL, 1)

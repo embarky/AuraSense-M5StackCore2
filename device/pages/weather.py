@@ -1,4 +1,5 @@
-# pages/weather.py — 5-day forecast page.
+# pages/weather.py — 5-day weather forecast page for AuraSense.
+# "AuraSense: See the air you breathe."
 #
 # Style: Matches home.py dark card aesthetic perfectly.
 # Absolute centering using M5.Display.textWidth()

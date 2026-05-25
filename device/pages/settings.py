@@ -1,4 +1,5 @@
-# pages/settings.py — WiFi provisioning via captive portal.
+# pages/settings.py — WiFi provisioning via captive portal for AuraSense.
+# "AuraSense: See the air you breathe."
 #
 # Non-blocking design: WiFi connection attempt runs as a state machine
 # in update(), so BtnB can exit at any time including during connection.
@@ -15,7 +16,7 @@ from components import (
     C_BG, C_MUTED, C_TEXT, C_YELLOW, C_ORANGE, C_BLUE, C_GREEN, C_RED, draw_text,
 )
 
-_AP_SSID    = "SmartSpace-Setup"
+_AP_SSID    = "AuraSense-Setup"
 _LOCAL_IP   = "192.168.4.1"
 _QR_CONTENT = "WIFI:S:{};T:nopass;;".format(_AP_SSID)
 
@@ -49,7 +50,7 @@ _FORM = (
     "color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600}"
     "footer{color:#c7c7cc;font-size:12px;margin-top:24px}"
     "</style></head><body>"
-    "<h1>Smart Space</h1>"
+    "<h1>AuraSense</h1>"
     "<p>Enter your WiFi details to connect your device.</p>"
     "<div class='card'><form method='POST' action='/'>"
     "<label>Network Name</label>"
@@ -58,7 +59,7 @@ _FORM = (
     "<input name='password' type='password' placeholder='Leave blank if open'></div>"
     "<button type='submit'>Connect</button>"
     "</form></div>"
-    "<footer>Smart Space &middot; IoT Environment Monitor</footer>"
+    "<footer>AuraSense &middot; See the air you breathe.</footer>"
     "</body></html>"
 )
 
@@ -132,7 +133,7 @@ class SettingsPage:
 
         # Give radio time to settle before AP restarts next entry
         time.sleep_ms(500)
-        print("[Settings] AP + servers stopped")
+        print("[AuraSense | Settings] AP + servers stopped")
 
     # ── AP ────────────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ class SettingsPage:
         for _ in range(10):
             if self._ap.active(): break
             time.sleep_ms(200)
-        print("[Settings] AP active:", _AP_SSID, "@", _LOCAL_IP)
+        print("[AuraSense | Settings] AP active:", _AP_SSID, "@", _LOCAL_IP)
 
     # ── DNS ───────────────────────────────────────────────────────────────────
 
@@ -154,9 +155,9 @@ class SettingsPage:
             self._dns.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self._dns.bind(("0.0.0.0", 53))
             self._dns.settimeout(0)
-            print("[Settings] DNS server ready")
+            print("[AuraSense | Settings] DNS server ready")
         except Exception as e:
-            print("[Settings] DNS error:", e)
+            print("[AuraSense | Settings] DNS error:", e)
 
     def _poll_dns(self) -> None:
         if not self._dns:
@@ -181,9 +182,9 @@ class SettingsPage:
             self._srv.bind(("0.0.0.0", 80))
             self._srv.listen(2)
             self._srv.settimeout(0)
-            print("[Settings] HTTP server ready")
+            print("[AuraSense | Settings] HTTP server ready")
         except Exception as e:
-            print("[Settings] HTTP error:", e)
+            print("[AuraSense | Settings] HTTP error:", e)
 
     def _poll_http(self) -> None:
         if not self._srv:
@@ -231,7 +232,7 @@ class SettingsPage:
         # Update screen
         M5.Display.fillRect(0, SCREEN_H // 2 - 10, 155, 20, C_BG)
         draw_text("Connecting...", 6, SCREEN_H // 2 - 6, C_YELLOW, C_BG, 1)
-        print("[Settings] Connecting to:", self._ssid)
+        print("[AuraSense | Settings] Connecting to:", self._ssid)
 
     def _poll_connection(self) -> None:
         if self._state != _STATE_CONNECTING:
@@ -311,10 +312,10 @@ class SettingsPage:
                 try:
                     getattr(M5.Display, method_name)(_QR_CONTENT, qr_x, qr_y, qr_size, 4)
                     qr_drawn = True
-                    print("[Settings] QR via M5.Display.{}".format(method_name))
+                    print("[AuraSense | Settings] QR via M5.Display.{}".format(method_name))
                     break
                 except Exception as e:
-                    print("[Settings] {} failed: {}".format(method_name, e))
+                    print("[AuraSense | Settings] {} failed: {}".format(method_name, e))
 
         if not qr_drawn:
             M5.Display.drawRect(qr_x, qr_y, qr_size, qr_size, 0x444444)
@@ -369,4 +370,4 @@ def _save_wifi(ssid: str, pwd: str) -> None:
     with open("config.py", "w") as f:
         for line in new:
             f.write(line)
-    print("[Settings] Saved SSID:", ssid)
+    print("[AuraSense | Settings] Saved SSID:", ssid)
