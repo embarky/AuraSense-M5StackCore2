@@ -99,7 +99,7 @@ def sparkline(series, color="#378ADD"):
 @st.fragment(run_every=30)
 def render_live_dashboard():
     live_status = get_current_status()
-    is_online = bool(live_status.get("timestamp"))
+    is_online = bool(live_status.get("timestamp")) and (time.time() - live_status.get("timestamp", 0)) < 60
 
     if is_online:
         display_location = live_status.get("location", "Unknown Location")
@@ -138,20 +138,25 @@ def render_live_dashboard():
     r1c1, r1c2, r1c3 = st.columns(3)
     with r1c1:
         st.metric("🌡 Temperature", f"{round(temp,1)} °C" if temp is not None else "—")
-        if not df_sparklines.empty and "temperature" in df_sparklines: 
+        if is_online and not df_sparklines.empty and "temperature" in df_sparklines: 
             sparkline(df_sparklines["temperature"].dropna().tail(60), "#EF4444")
-        st.caption(current_metrics.get("comfort_level", "Sensor offline") if not is_online else current_metrics.get("comfort_level", "Normal comfort"))
+        if not is_online:
+            st.caption("Sensor offline")
+        else:
+            level = current_metrics.get("comfort_level", "Normal comfort")
+            icon = "🟢" if level in ("Comfortable", "Acceptable") else ("🟡" if level in ("Too Dry", "Too Humid") else "🔴")
+            st.caption(f"{icon} {level}")
 
     with r1c2:
         st.metric("💧 Humidity", f"{round(hum,0):.0f} %" if hum is not None else "—")
-        if not df_sparklines.empty and "humidity" in df_sparklines: 
+        if is_online and not df_sparklines.empty and "humidity" in df_sparklines: 
             sparkline(df_sparklines["humidity"].dropna().tail(60), "#10B981")
         if not is_online: st.caption("Sensor offline")
         elif hum is not None: st.caption("🟡 Needs Attention" if hum < THRESH["hum_low_warn"] or hum > THRESH["hum_high_warn"] else "🟢 Optimal level")
 
     with r1c3:
-        st.metric("💨 eCO2 Level", f"{int(eco2)} ppm" if eco2 is not None else "—")
-        if not df_sparklines.empty and "eco2" in df_sparklines: 
+        st.metric("🌿 eCO2 Level", f"{int(eco2)} ppm" if eco2 is not None else "—")
+        if is_online and not df_sparklines.empty and "eco2" in df_sparklines: 
             sparkline(df_sparklines["eco2"].dropna().tail(60), "#F59E0B")
         if not is_online: st.caption("Sensor offline")
         elif eco2 is not None: st.caption("🟡 Ventilation recommended" if eco2 > THRESH["eco2_warning"] else "🟢 Good air quality")
@@ -160,18 +165,22 @@ def render_live_dashboard():
 
     r2c1, r2c2, r2c3 = st.columns(3)
     with r2c1:
-        st.metric("⚗️ TVOC", f"{int(tvoc)} ppb" if tvoc is not None else "—")
+        st.metric("☁️ TVOC", f"{int(tvoc)} ppb" if tvoc is not None else "—")
+        if is_online and not df_sparklines.empty and "tvoc" in df_sparklines:
+            sparkline(df_sparklines["tvoc"].dropna().tail(60), "#8B5CF6")
         if not is_online: st.caption("Sensor offline")
         elif tvoc is not None: st.caption("🔴 Danger" if tvoc > THRESH["tvoc_danger"] else ("🟡 Moderate" if tvoc > THRESH["tvoc_warning"] else "🟢 Good"))
 
     with r2c2:
-        st.metric("📊 Air Pressure", f"{int(press)} hPa" if press is not None else "—")
+        st.metric("🌬️ Air Pressure", f"{int(press)} hPa" if press is not None else "—")
+        if is_online and not df_sparklines.empty and "pressure" in df_sparklines:
+            sparkline(df_sparklines["pressure"].dropna().tail(60), "#6366F1")
         if not is_online: st.caption("Sensor offline")
-        elif press is not None: st.caption("🟢 Stable" if 980 < press < 1040 else "🟡 Unusual")
+        elif press is not None: st.caption("🟢 Stable" if 970 < press < 1050 else "🟡 Unusual")
 
     with r2c3:
         motion = (current_metrics.get("motion") if is_online else None)
-        st.metric("🚶 Motion Status", "Detected" if motion else ("Clear" if is_online else "—"))
+        st.metric("👁️ Motion Status", "Detected" if motion else ("Clear" if is_online else "—"))
         st.caption("Sensor offline" if not is_online else ("Active" if motion else "No movement in area"))
         
     return current_metrics, is_online
