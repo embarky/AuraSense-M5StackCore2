@@ -1,9 +1,8 @@
 """
-routes/sensors.py — Sensor telemetry ingestion and query endpoints for AuraSense.
-"AuraSense: See the air you breathe."
+routes/sensors.py — Sensor data ingestion and query endpoints.
 
-POST /api/sensor_data      Receive readings from the edge device.
-GET  /api/current_status   Latest state snapshot for the web dashboard.
+POST /api/sensor_data      Receive readings from the Core2 device.
+GET  /api/current_status   Latest state snapshot for Streamlit dashboard.
 GET  /api/history          Historical readings (query param: hours).
 GET  /api/aggregates       Daily aggregates for charts (query param: days).
 """
@@ -17,10 +16,10 @@ from flask import Blueprint, Response, current_app, jsonify, request
 
 sensors_bp = Blueprint("sensors", __name__)
 
-# ── In-Memory State (Shared between edge device and dashboard) ────────────────
+# ── In-memory state (shared between device and dashboard) ─────────────────────
 
 _state: dict = {
-    "ai_advice": "AuraSense is initializing...",
+    "ai_advice": "Waiting for initial AI analysis…",
 }
 _last_ai_time: float = 0.0
 
@@ -28,12 +27,12 @@ _last_ai_time: float = 0.0
 @sensors_bp.route("/api/sensor_data", methods=["POST"])
 def receive_sensor_data():
     """
-    Primary telemetry ingestion endpoint called by the edge device every cycle.
+    Primary ingestion endpoint called by the Core2 every polling cycle.
 
-    1. Caches current outdoor weather based on server IP.
-    2. Stores the indoor reading in BigQuery.
-    3. Triggers a background AuraSense AI-advice generation (rate-limited).
-    4. Returns outdoor weather + NTP time-sync payload to the edge device.
+    1. Stores the reading in BigQuery.
+    2. Fetches current outdoor weather.
+    3. Triggers a background AI-advice generation (rate-limited).
+    4. Returns outdoor weather + NTP time-sync payload to the device.
     """
     global _state, _last_ai_time
 
@@ -45,11 +44,11 @@ def receive_sensor_data():
     weather = current_app.weather_service
     ai      = current_app.ai_advice_service
 
-    # ── 1. Outdoor Weather (Cached) ───────────────────────────────────────────
+    # ── 1. Outdoor weather (cached) ───────────────────────────────────────────
     outdoor = weather.get_current()
     loc     = weather.location
 
-    # ── 2. Update In-Memory State ─────────────────────────────────────────────
+    # ── 2. Update in-memory state ─────────────────────────────────────────────
     now = time.time()
     _state = {
         "timestamp":     now,
@@ -59,33 +58,29 @@ def receive_sensor_data():
         "pressure":      payload.get("pressure"),
         "eco2":          payload.get("eco2"),
         "tvoc":          payload.get("tvoc"),
-        "motion":        payload.get("motion", False),
+        "motion":        payload.get("motion_detected", False),
         "outdoor_temp":  outdoor.get("temp"),
         "outdoor_desc":  outdoor.get("description"),
         "outdoor_icon":  outdoor.get("icon"),
         "timezone":      loc.get("timezone", "UTC"),
-        "ai_advice":     _state.get("ai_advice", "Analyzing environment..."),
+        "ai_advice":     _state.get("ai_advice", "Analysing…"),
     }
 
-    # ── 3. BigQuery Persistence ───────────────────────────────────────────────
-    if bq is not None:
-        bq_payload = {
-            "temperature":     payload.get("temperature"),
-            "humidity":        payload.get("humidity"),
-            "pressure":        payload.get("pressure"),
-            "eco2":            payload.get("eco2"),
-            "tvoc":            payload.get("tvoc"),
-            "motion_detected": payload.get("motion", False),
-            "timezone":        loc.get("timezone", "UTC"),
-        }
-        success, msg = bq.insert_sensor_reading(bq_payload)
-        if not success:
-            print(f"[AuraSense | API] BigQuery persistence failed: {msg}")
-    else:
-        # Graceful degradation if GCP is unconfigured
-        pass
+    # ── 3. BigQuery persistence ───────────────────────────────────────────────
+    bq_payload = {
+        "temperature":     payload.get("temperature"),
+        "humidity":        payload.get("humidity"),
+        "pressure":        payload.get("pressure"),
+        "eco2":            payload.get("eco2"),
+        "tvoc":            payload.get("tvoc"),
+        "motion_detected": payload.get("motion_detected", False),
+        "timezone":        loc.get("timezone", "UTC"),
+    }
+    success, msg = bq.insert_sensor_reading(bq_payload)
+    if not success:
+        print(f"[/api/sensor_data] BigQuery error: {msg}")
 
-    # ── 4. AI Advice (Rate-limited background task) ───────────────────────────
+    # ── 4. AI advice (rate-limited background task) ───────────────────────────
     cooldown = current_app.config.get("AI_COOLDOWN_SECONDS", 600)
     if now - _last_ai_time >= cooldown:
         _last_ai_time = now
@@ -104,7 +99,7 @@ def receive_sensor_data():
         )
         thread.start()
 
-    # ── 5. Device Synchronization Response ────────────────────────────────────
+    # ── 5. NTP time-sync response ─────────────────────────────────────────────
     offset    = loc.get("offset", 3600)
     local_utc = time.gmtime(now + offset)
     ntp_sync  = [
@@ -117,7 +112,6 @@ def receive_sensor_data():
         "outdoor_temp": outdoor.get("temp"),
         "outdoor_desc": outdoor.get("description"),
         "outdoor_icon": outdoor.get("icon"),
-        "location":     loc.get("city"),
         "utc_time":     ntp_sync,
         "ai_advice":    _state.get("ai_advice"),
     }), 200
@@ -125,9 +119,9 @@ def receive_sensor_data():
 
 @sensors_bp.route("/api/current_status", methods=["GET"])
 def current_status():
-    """Real-time snapshot consumed by the AuraSense Streamlit dashboard."""
+    """Real-time snapshot consumed by the Streamlit dashboard."""
     if not _state.get("timestamp"):
-        return jsonify({"message": "Device offline or no telemetry received yet."}), 202
+        return jsonify({"message": "Device offline or no data received yet."}), 202
 
     response = jsonify(_state)
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -137,41 +131,33 @@ def current_status():
 @sensors_bp.route("/api/history", methods=["GET"])
 def history():
     """
-    Return raw sensor readings for the requested time window.
+    Return raw sensor readings for the requested window.
     Query param: hours (default 24).
     """
-    bq = current_app.bq_service
-    if not bq:
-        return jsonify([]), 200
-
     hours = int(request.args.get("hours", 24))
-    rows  = bq.get_history(hours=hours)
+    rows  = current_app.bq_service.get_history(hours=hours)
     return jsonify(rows), 200
 
 
 @sensors_bp.route("/api/aggregates", methods=["GET"])
 def aggregates():
     """
-    Return daily min/max/avg aggregates for dashboard charting.
+    Return daily min/max/avg aggregates for charting.
     Query param: days (default 7).
     """
-    bq = current_app.bq_service
-    if not bq:
-        return jsonify([]), 200
-
     days = int(request.args.get("days", 7))
-    rows = bq.get_daily_aggregates(days=days)
+    rows = current_app.bq_service.get_daily_aggregates(days=days)
     return jsonify(rows), 200
 
 
-# ── Background Thread Helper ──────────────────────────────────────────────────
+# ── Background helper ─────────────────────────────────────────────────────────
 
 def _run_ai_advice(
     ai_service,
     indoor_temp, indoor_hum, eco2, tvoc,
     outdoor_temp, outdoor_desc,
 ) -> None:
-    """Executed in a daemon thread so the HTTP POST response is never blocked."""
+    """Called in a daemon thread so the POST response is never blocked."""
     global _state
     advice = ai_service.generate_advice(
         indoor_temp=indoor_temp,
