@@ -1,5 +1,6 @@
 """
-dashboard/charts.py — Plotly chart factory functions.
+dashboard/charts.py — Plotly chart factory functions for AuraSense.
+"AuraSense: See the air you breathe."
 """
 from __future__ import annotations
 import pandas as pd
@@ -37,7 +38,7 @@ def create_offline_placeholder(height: int = 250) -> go.Figure:
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
         annotations=[dict(
-            text="📴 Device Offline<br><span style='font-size:12px;color:#888'>No data recorded during this period</span>",
+            text="📴 AuraSense Offline<br><span style='font-size:12px;color:#888'>No data recorded during this period</span>",
             xref="paper", yref="paper",
             x=0.5, y=0.5,
             showarrow=False,

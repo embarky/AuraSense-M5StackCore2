@@ -1,7 +1,8 @@
 """
-routes/weather.py — Weather API endpoints.
+routes/weather.py — Weather API endpoints for AuraSense.
+"AuraSense: See the air you breathe."
 
-GET /weather    Returns a 5-day daily aggregated weather forecast.
+GET /api/forecast    Returns a 5-day daily aggregated weather forecast.
 """
 
 from __future__ import annotations
@@ -14,10 +15,8 @@ weather_bp = Blueprint("weather", __name__)
 @weather_bp.route("/api/forecast", methods=["GET"])
 def forecast():
     """
-    Core2 → GET Request → weather_service (OWM) → JSON Forecast → Core2.
-    
-    Returns the 5-day / daily aggregated forecast to be displayed on the
-    M5Stack accordion UI.
+    Provides the 5-day aggregated weather forecast for the edge device UI.
+    Pipeline: Core2 → GET Request → WeatherService (OWM) → JSON Forecast → Core2.
     """
     try:
         # Fetch the service instance attached to the main Flask app
@@ -27,6 +26,7 @@ def forecast():
         forecast_data = ws.get_forecast()
         
         if not forecast_data:
+            print("[AuraSense | Weather API] WARNING: Forecast data returned empty.")
             return jsonify({
                 "status": "error",
                 "message": "Forecast returned empty."
@@ -35,10 +35,11 @@ def forecast():
         return jsonify({
             "status": "success",
             "forecast": forecast_data
-        })
+        }), 200
 
     except Exception as exc:
         import traceback
+        print(f"[AuraSense | Weather API] ERROR: {exc}")
         traceback.print_exc()
         return jsonify({
             "status": "error",

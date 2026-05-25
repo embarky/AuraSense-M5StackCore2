@@ -1,5 +1,6 @@
 """
-dashboard/app.py — Smart Space Streamlit dashboard (Final Production Version).
+dashboard/app.py — AuraSense Streamlit dashboard (Final Production Version).
+"AuraSense: See the air you breathe."
 """
 import time
 import datetime
@@ -20,7 +21,7 @@ from charts import (
 
 @st.cache_data(ttl=3600)
 def fetch_ip_location():
-    """根据访客 IP 地址获取当前的城市和国家"""
+    """Fetch the current city and country based on the visitor's IP address"""
     try:
         r = requests.get("http://ip-api.com/json/", timeout=3)
         if r.status_code == 200:
@@ -34,7 +35,7 @@ def fetch_ip_location():
 
 @st.cache_data(ttl=900)
 def fetch_flask_forecast():
-    """调用后端的 Forecast API 获取气象数据"""
+    """Call the backend Forecast API to retrieve weather data"""
     try:
         r = requests.get(f"{FLASK_URL}/api/forecast", timeout=3)
         if r.status_code == 200:
@@ -48,7 +49,7 @@ def fetch_flask_forecast():
 # ── Page Configuration ────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Smart Space",
+    page_title="AuraSense",
     page_icon="🏠",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -116,8 +117,8 @@ def render_live_dashboard():
 
     col_title, col_ctrl = st.columns([3, 1])
     with col_title:
-        st.title("Smart Space Dashboard")
-        st.caption(f"📍 Indoor Environment Monitor · {display_location}")
+        st.title("AuraSense Dashboard")
+        st.caption(f"📍 AuraSense: See the air you breathe. · {display_location}")
 
     with col_ctrl:
         dot = "🟢 Live" if is_online else "🔴 Offline"

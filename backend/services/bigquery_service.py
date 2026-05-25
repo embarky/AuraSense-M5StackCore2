@@ -1,5 +1,5 @@
 """
-services/bigquery_service.py — Google BigQuery data layer.
+services/bigquery_service.py — Google BigQuery data layer for AuraSense.
 
 Actual table: caa-project-493719.iot_data.sensor_logs
 
@@ -20,22 +20,30 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from google.cloud import bigquery
+from google.api_core.exceptions import GoogleAPIError, RetryError
+from urllib3.exceptions import ProtocolError
 
 from config import Config
 
 
 class BigQueryService:
-    """Thin wrapper around the BigQuery client for sensor data operations."""
+    """Thin wrapper around the BigQuery client for AuraSense sensor operations."""
 
     def __init__(self) -> None:
         self._client = bigquery.Client(project=Config.GCP_PROJECT)
         self._table  = f"{Config.GCP_PROJECT}.{Config.BQ_DATASET}.{Config.BQ_TABLE}"
-        print(f"[BigQueryService] Connected — table: {self._table}")
+        print(f"[AuraSense | BigQuery] Connected to table: {self._table}")
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
     def insert_sensor_reading(self, payload: dict) -> tuple[bool, str]:
-        """Insert one row of sensor data. Returns (success, message)."""
+        """
+        Insert one row of sensor data into BigQuery. 
+        Wrapped in comprehensive try/except blocks to prevent Google API 
+        timeouts (e.g., due to local OS sleep or proxy drops) from crashing Flask.
+        
+        Returns (success, message).
+        """
         row = {
             "timestamp":       datetime.now(timezone.utc).isoformat(),
             "temperature":     payload.get("temperature"),
@@ -47,12 +55,28 @@ class BigQueryService:
             "motion_detected": int(bool(payload.get("motion_detected", 0))),
             "timezone":        payload.get("timezone", "UTC"),
         }
-        errors = self._client.insert_rows_json(self._table, [row])
-        if errors:
-            msg = f"BigQuery insert error: {errors}"
-            print(f"[BigQueryService] ERROR — {msg}")
+
+        # 🌟 ARMOR PLATING: Catch network and API errors to prevent HTTP 500s
+        try:
+            errors = self._client.insert_rows_json(self._table, [row])
+            if errors:
+                msg = f"BigQuery row rejected: {errors}"
+                print(f"[AuraSense | BigQuery] WARNING — {msg}")
+                return False, msg
+                
+            return True, "ok"
+
+        except (GoogleAPIError, RetryError, ProtocolError, ConnectionError) as exc:
+            msg = f"Network or API Error while reaching Google Cloud: {type(exc).__name__}"
+            print(f"[AuraSense | BigQuery] ERROR — {msg}")
+            # We return False safely so the Flask route can handle it gracefully 
+            # without crashing the whole application thread.
             return False, msg
-        return True, "ok"
+            
+        except Exception as exc:
+            msg = f"Unexpected Error during BigQuery insert: {exc}"
+            print(f"[AuraSense | BigQuery] FATAL — {msg}")
+            return False, msg
 
     # ── Read ──────────────────────────────────────────────────────────────────
 
@@ -64,10 +88,14 @@ class BigQueryService:
             ORDER BY timestamp DESC
             LIMIT 1
         """
-        rows = list(self._client.query(query).result())
-        if not rows:
+        try:
+            rows = list(self._client.query(query).result())
+            if not rows:
+                return None
+            return dict(rows[0])
+        except Exception as exc:
+            print(f"[AuraSense | BigQuery] Query Error (get_latest): {exc}")
             return None
-        return dict(rows[0])
 
     def get_history(self, hours: int = 24) -> list[dict]:
         """Return all rows from the last *hours* hours, newest first."""
@@ -77,17 +105,21 @@ class BigQueryService:
             WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
             ORDER BY timestamp DESC
         """
-        return [dict(r) for r in self._client.query(query).result()]
+        try:
+            return [dict(r) for r in self._client.query(query).result()]
+        except Exception as exc:
+            print(f"[AuraSense | BigQuery] Query Error (get_history): {exc}")
+            return []
 
     def get_recent_summary(self, hours: int = 24) -> str:
         """
         Build a compact human-readable summary of recent sensor readings.
         Injected into the voice-assistant system prompt so Gemini can answer
-        questions like 'what was the humidity yesterday?'.
+        contextual questions.
         """
         rows = self.get_history(hours)
         if not rows:
-            return "No sensor data available."
+            return "No recent AuraSense data available."
 
         latest = rows[0]
         temps  = [r["temperature"] for r in rows if r.get("temperature") is not None]
@@ -108,7 +140,7 @@ class BigQueryService:
         return "\n".join(p for p in parts if p)
 
     def get_daily_aggregates(self, days: int = 7) -> list[dict]:
-        """Return daily min/max/avg aggregates for the Streamlit dashboard."""
+        """Return daily min/max/avg aggregates for the AuraSense Streamlit dashboard."""
         query = f"""
             SELECT
                 DATE(timestamp) AS day,
@@ -122,4 +154,8 @@ class BigQueryService:
             GROUP BY day
             ORDER BY day DESC
         """
-        return [dict(r) for r in self._client.query(query).result()]
+        try:
+            return [dict(r) for r in self._client.query(query).result()]
+        except Exception as exc:
+            print(f"[AuraSense | BigQuery] Query Error (get_daily_aggregates): {exc}")
+            return []

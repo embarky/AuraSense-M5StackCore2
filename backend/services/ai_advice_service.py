@@ -1,10 +1,10 @@
 """
 services/ai_advice_service.py — Context-aware environmental health advice.
 
-Uses Gemini to generate short, actionable advice based on the current
-indoor sensor readings combined with the outdoor weather conditions.
-The output is displayed on the Streamlit dashboard and can be announced
-by the Core2 device when presence is detected.
+Uses Gemini to generate short, actionable advice based on current
+indoor sensor readings combined with outdoor weather conditions.
+The output is displayed on the AuraSense web dashboard and can be 
+announced by the edge device when presence is detected.
 """
 
 from __future__ import annotations
@@ -15,20 +15,20 @@ from google.genai import types
 from config import Config
 
 
-_ADVICE_PROMPT = """You are a home environment health advisor.
+_ADVICE_PROMPT = """You are the AI persona for "AuraSense", a premium home environment and climate advisor.
 Given the indoor sensor readings and outdoor conditions below, provide one short,
 actionable recommendation (max 20 words) in English.
 
-Focus on: air quality, humidity comfort, temperature, ventilation needs.
-Do NOT use Markdown. Be direct and specific."""
+Focus on: air quality, humidity comfort, temperature, and ventilation needs.
+Do NOT use Markdown. Be direct, helpful, and specific."""
 
 
 class AIAdviceService:
-    """Generates health advice from sensor data using Gemini."""
+    """Generates health and comfort advice from sensor data using Gemini."""
 
     def __init__(self) -> None:
         self._client = genai.Client(api_key=Config.GEMINI_API_KEY)
-        print("[AIAdviceService] Initialised.")
+        print("[AuraSense | AIAdviceService] Initialized.")
 
     def generate_advice(
         self,
@@ -40,7 +40,7 @@ class AIAdviceService:
         outdoor_desc: str   | None,
     ) -> str:
         """
-        Generate a short health recommendation.
+        Generate a short health and comfort recommendation.
 
         Returns a plain-text string, or a fallback message on error.
         """
@@ -54,15 +54,15 @@ class AIAdviceService:
                 model=Config.GEMINI_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    # No search tool needed — advice is based on provided data.
+                    # No search tool needed — advice is purely based on the provided sensor telemetry.
                 ),
             )
             advice = response.text.strip()
-            print(f"[AIAdviceService] Generated: {advice}")
+            print(f"[AuraSense | AIAdviceService] Generated: {advice}")
             return advice
         except Exception as exc:
-            print(f"[AIAdviceService] ERROR: {exc}")
-            return "Unable to generate advice at this time."
+            print(f"[AuraSense | AIAdviceService] ERROR: {exc}")
+            return "Unable to generate AuraSense advice at this time."
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
