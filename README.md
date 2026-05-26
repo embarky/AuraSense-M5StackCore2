@@ -165,6 +165,15 @@ Dashboard will be available at `http://YOUR_SERVER_IP:8501`
 
 ---
 
+## Individual Contributions
+
+| Member | Contributions |
+|--------|--------------|
+| **Hang Yang** | Device firmware (MicroPython) — sensor integration, LED alert system, screen management, voice assistant, WiFi stability and network resilience. Flask backend — API design, Gemini AI integration, TTS pipeline, BigQuery persistence, weather service, Docker deployment on GCP. |
+| **Yi Huang** | Streamlit dashboard — real-time overview, sparkline charts, outdoor weather card, anomaly log panel, trend analysis, historical insights, AI advice integration, online/offline detection. |
+
+---
+
 ## Made by
 
 **Hang Yang & Yi Huang** — University of Lausanne, Cloud and Advanced Analytics 2026
