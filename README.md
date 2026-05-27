@@ -15,6 +15,7 @@
 [![YouTube Demo](https://img.shields.io/badge/YouTube-Watch_Demo-C4302B?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=83zbSBvbl1c)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-View_Source-24292E?style=for-the-badge&logo=github&logoColor=white)](https://github.com/embarky/AuraSense-M5StackCore2)
 [![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-Streamlit-E66465?style=for-the-badge&logo=streamlit&logoColor=white)](http://34.62.132.20:8501/)
+[![User Manual](https://img.shields.io/badge/User_Manual-Download-1B9AAA?style=for-the-badge&logo=gitbook&logoColor=white)](assets/AuraSense_User_Manual.pdf)
 
 ---
 
