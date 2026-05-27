@@ -255,7 +255,7 @@ def upload_voice_and_receive(rec_path: str):
         print("[AuraSense | Voice] Uploading %d bytes" % len(wav))
         
         resp = requests.post(config.VOICE_URL, data=wav,
-                             headers={"Content-Type": "audio/wav"}, timeout=10)
+                             headers={"Content-Type": "audio/wav"}, timeout=50)
                              
         if resp.status_code == 204:
             return None
