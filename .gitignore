@@ -9,7 +9,8 @@ __pycache__/
 # --- Sensitive Information & Credentials (CRITICAL!) ---
 .env
 *.json
-# Note: The !config.json exception above is to keep your M5Stack configuration tracked.
+!config-example.json
+# Note: The !config-example.json exception above is to keep your M5Stack configuration tracked.
 # However, if you are using real Service Account Keys (JSON) for GCP deployment,
 # you MUST ensure those specific key files are explicitly excluded, for example:
 *credentials*.json

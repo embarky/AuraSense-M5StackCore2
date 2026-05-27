@@ -129,16 +129,9 @@ Before deploying, obtain the following:
 ### Device Setup
 
 1. Flash **UIFlow2.0 V2.4.4-CORE2** via [M5Burner](https://m5stack.com/pages/download)
-2. In Thonny REPL, run once to disable MQTT and boot directly into `main.py`:
-   ```python
-   import esp32
-   nvs = esp32.NVS("uiflow")
-   nvs.set_u8("boot_option", 0)
-   nvs.set_blob("server", b"")
-   nvs.commit()
-   ```
-3. Edit `device/config.py` with your WiFi credentials and server IP
-4. Upload all files from `device/` to `/flash/` using Thonny
+2. Upload all files from `device/` to `/flash/` using Thonny
+3. Set SERVER_HOST = "YourServerIPAddress" in `device/config.py`
+4. Set the device to automatically run `main.py` upon startup via [M5Burner](https://m5stack.com/pages/download)
 
 ### Server Deployment
 
