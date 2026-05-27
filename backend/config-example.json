@@ -1,0 +1,20 @@
+{
+    "gemini_api_key":         "YOUR_GEMINI_API_KEY",
+    "gemini_model":           "gemini-2.5-flash",
+    "max_conversation_turns": 10,
+
+    "openweather_api_key":    "YOUR_OPENWEATHER_API_KEY",
+    "fallback_city":          "Lausanne,CH",
+
+    "gcp_project":            "your-gcp-project-id",
+    "gcp_credentials_file":   "your-credentials-file.json",
+    "bq_dataset":             "iot_data",
+    "bq_table":               "sensor_logs",
+
+    "weather_cache_ttl":      600,
+    "location_cache_ttl":     3600,
+    "ai_cooldown_seconds":    600,
+
+    "debug": false,
+    "port":  5001
+}
