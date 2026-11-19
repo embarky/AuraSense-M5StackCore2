@@ -129,22 +129,23 @@ Before deploying, obtain the following:
 ### Device Setup
 
 1. Flash **UIFlow2.0 V2.4.4-CORE2** via [M5Burner](https://m5stack.com/pages/download)
-2. Upload all files from `device/` to `/flash/` using Thonny
-3. Set SERVER_HOST = "YourServerIPAddress" in `device/config.py`
+2. Copy `device/config.example.py` to `device/config.py` and set `SERVER_HOST`, `API_KEY` (same value as `AURASENSE_API_KEY` on the server) and `DEVICE_ID`. WiFi credentials can be left empty and entered later through the QR-code setup page.
+3. Upload all files from `device/` to `/flash/` using Thonny
 4. Set the device to automatically run `main.py` upon startup via [M5Burner](https://m5stack.com/pages/download)
 
 ### Server Deployment
 
-1. Place your GCP service account JSON key in `backend/` and `dashboard/`
-2. Fill in `backend/config.json` with your API keys and GCP project details
-3. Update the credential paths in `docker-compose.yml` to absolute paths on your server
-4. Run:
+1. Copy `backend/config-example.json` to `backend/config.json` and fill in your Gemini / OpenWeatherMap keys and BigQuery dataset
+2. Copy `.env.example` to `.env` and set `AURASENSE_API_KEY`, `GCP_PROJECT` and `GCP_CREDENTIALS_PATH` (path to your service-account key, e.g. `./secrets/gcp-service-account.json`)
+3. Run:
    ```bash
-   docker-compose up -d --build
+   docker compose up -d --build
    ```
-5. Open port **5001** and **8501** in your firewall/security group
+4. Open port **5001** and **8501** in your firewall/security group. For any public deployment, put the backend behind an HTTPS reverse proxy.
 
 Dashboard will be available at `http://YOUR_SERVER_IP:8501`
+
+> **Security:** every API endpoint except `GET /health` requires the `X-API-Key` header. `config.py`, `config.json`, `.env` and key files are gitignored; install the [gitleaks](https://github.com/gitleaks/gitleaks) pre-commit hook with `pip install pre-commit && pre-commit install`.
 
 > See `docker-compose.yml` and the `backend/` and `dashboard/` Dockerfiles for the full container configuration.
 
