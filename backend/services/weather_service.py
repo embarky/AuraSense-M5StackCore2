@@ -12,23 +12,24 @@ Features
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
 import requests
-
 from config import Config
+
+log = logging.getLogger(__name__)
 
 
 class WeatherService:
     """Fetches and caches outdoor weather data from OpenWeatherMap for the AuraSense platform."""
 
     _OWM_BASE   = "http://api.openweathermap.org/data/2.5"
-    # 移除了固定的 URL，改为在 _refresh_location 中动态生成
 
     def __init__(self) -> None:
         self._location: dict = {
-            "ip":          None,  # 记录当前缓存对应的 IP
+            "ip":          None,  # IP the cached location belongs to
             "lat":         None,
             "lon":         None,
             "city":        Config.FALLBACK_CITY,
@@ -46,7 +47,7 @@ class WeatherService:
         }
         # Pre-warm the location cache on startup (using server IP initially)
         self._refresh_location()
-        print(f"[AuraSense | Weather] Initialized — Location: {self._location['city']}")
+        log.info(f"Initialized — Location: {self._location['city']}")
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -139,7 +140,7 @@ class WeatherService:
             return result
  
         except Exception as exc:
-            print(f"[AuraSense | Weather] Forecast fetch failed: {exc}")
+            log.error(f"Forecast fetch failed: {exc}")
             return []
 
     @property
@@ -171,9 +172,9 @@ class WeatherService:
                     "timezone":    data.get("timezone", "UTC"),
                     "last_update": time.time(),
                 })
-                print(f"[AuraSense | Weather] Location updated for IP {client_ip or 'Server'}: {self._location['city']}")
+                log.info(f"Location updated for IP {client_ip or 'Server'}: {self._location['city']}")
         except Exception as exc:
-            print(f"[AuraSense | Weather] IP geolocation failed: {exc}")
+            log.error(f"IP geolocation failed: {exc}")
 
     def _refresh_current(self, client_ip: Optional[str] = None) -> None:
         """Fetch current weather data from OpenWeatherMap."""
@@ -195,7 +196,7 @@ class WeatherService:
                 "last_update": time.time(),
             })
         except Exception as exc:
-            print(f"[AuraSense | Weather] Current weather fetch failed: {exc}")
+            log.error(f"Current weather fetch failed: {exc}")
 
     def _build_params(self) -> dict:
         """Build the OWM query parameters, preferring lat/lon over city name."""
