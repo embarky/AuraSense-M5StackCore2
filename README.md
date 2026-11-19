@@ -113,47 +113,68 @@ AuraSense implements a decoupled architecture, separating edge telemetry acquisi
 
 ---
 
-## 5. Deployment
+## 5. Run It
 
-### Required Services & API Keys
+### ▶️ Quick start — no hardware, API keys or cloud account
 
-Before deploying, obtain the following:
+```bash
+git clone https://github.com/embarky/AuraSense-M5StackCore2.git
+cd AuraSense-M5StackCore2
+docker compose up --build
+```
+
+Open **http://localhost:8501**. A virtual device backfills 7 days of history and then streams live readings every 10 seconds, so every dashboard panel is populated within about a minute.
+
+| Part | Local demo | Cloud deployment |
+|------|-----------|------------------|
+| Device | `simulator/` — physics-based virtual room | M5Stack Core2 |
+| Storage | SQLite (Docker volume) | Google BigQuery |
+| AI advice & voice | Rule-based offline mock | Google Gemini |
+| Weather | Synthetic forecast | OpenWeatherMap |
+| Speech | Chime | Edge TTS |
+
+The **simulator** models one room: a CO₂ mass balance driven by a two-person weekday/weekend routine, ventilation and window opening, cooking-related TVOC, heating set-points and humidity sources. It also reproduces a property of the real sensor: the SGP30 reports *estimated* eCO₂, which is biased upward by VOCs. Scenarios: `mixed` (default), `normal`, `stuffy`, `dry` — set `SIM_SCENARIO` in `.env`. To export a CSV without running the stack:
+
+```bash
+python simulator/aurasense_sim.py export --days 7 --out readings.csv
+```
+
+Each provider can also be switched individually (for example `AI_PROVIDER=gemini` with `GEMINI_API_KEY`); see `.env.example`.
+
+### ☁️ Cloud deployment with the real device
+
+**Required services:**
 
 | Service | Purpose | Where to get |
 |---------|---------|--------------|
 | Google Gemini API | AI advice + voice assistant | [aistudio.google.com](https://aistudio.google.com/) |
 | OpenWeatherMap API | Outdoor weather context | [openweathermap.org](https://openweathermap.org/api) |
-| GCP Service Account | BigQuery read/write access | GCP Console → IAM |
+| GCP service account | BigQuery read/write access | GCP Console → IAM |
 | Google BigQuery | Sensor data persistence | GCP Console |
 
-### Device Setup
+**Server:**
+
+1. Copy `.env.example` to `.env` and fill in every value under "Cloud deployment"
+2. Run:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build
+   ```
+3. Open ports **5001** and **8501** in your firewall. For any public deployment, put the backend behind an HTTPS reverse proxy.
+
+**Device:**
 
 1. Flash **UIFlow2.0 V2.4.4-CORE2** via [M5Burner](https://m5stack.com/pages/download)
-2. Copy `device/config.example.py` to `device/config.py` and set `SERVER_HOST`, `API_KEY` (same value as `AURASENSE_API_KEY` on the server) and `DEVICE_ID`. WiFi credentials can be left empty and entered later through the QR-code setup page.
+2. Copy `device/config.example.py` to `device/config.py` and set `SERVER_HOST`, `API_KEY` (same value as `AURASENSE_API_KEY`) and `DEVICE_ID`. WiFi credentials can be entered later through the QR-code setup page.
 3. Upload all files from `device/` to `/flash/` using Thonny
-4. Set the device to automatically run `main.py` upon startup via [M5Burner](https://m5stack.com/pages/download)
+4. Set the device to run `main.py` on startup via M5Burner
 
-### Server Deployment
-
-1. Copy `backend/config-example.json` to `backend/config.json` and fill in your Gemini / OpenWeatherMap keys and BigQuery dataset
-2. Copy `.env.example` to `.env` and set `AURASENSE_API_KEY`, `GCP_PROJECT` and `GCP_CREDENTIALS_PATH` (path to your service-account key, e.g. `./secrets/gcp-service-account.json`)
-3. Run:
-   ```bash
-   docker compose up -d --build
-   ```
-4. Open port **5001** and **8501** in your firewall/security group. For any public deployment, put the backend behind an HTTPS reverse proxy.
-
-Dashboard will be available at `http://YOUR_SERVER_IP:8501`
-
-> **Security:** every API endpoint except `GET /health` requires the `X-API-Key` header. `config.py`, `config.json`, `.env` and key files are gitignored; install the [gitleaks](https://github.com/gitleaks/gitleaks) pre-commit hook with `pip install pre-commit && pre-commit install`.
-
-> See `docker-compose.yml` and the `backend/` and `dashboard/` Dockerfiles for the full container configuration.
+> **Security:** every API endpoint except `GET /health` requires the `X-API-Key` header. `config.py`, `config.json`, `.env` and key files are gitignored and excluded from Docker images; install the [gitleaks](https://github.com/gitleaks/gitleaks) pre-commit hook with `pip install pre-commit && pre-commit install`.
 
 ---
 
 ## 6. Data Persistence
 
-* **Google BigQuery** — time-series warehouse for all sensor readings
+* **SQLite** (local demo) or **Google BigQuery** (cloud) behind one storage interface (`backend/storage/`)
 * **Timezone:** All timestamps normalized to `Europe/Zurich`
 * **Schema:** `timestamp`, `temperature`, `humidity`, `pressure`, `eco2`, `tvoc`, `motion_detected`, `timezone`
 * **Query windows:** 1h / 24h / 7d / custom range supported

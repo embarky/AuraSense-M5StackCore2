@@ -9,6 +9,13 @@ device/config.py
 key.json
 secrets/
 
+# --- Local demo data ---
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+readings.csv
+
 # --- Python ---
 .venv/
 venv/

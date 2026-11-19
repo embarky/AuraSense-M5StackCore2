@@ -1,0 +1,38 @@
+# docker-compose.gcp.yml — overrides for the Google Cloud deployment.
+#
+#     docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build
+#
+# Requires in .env: AURASENSE_API_KEY, GCP_PROJECT, GCP_CREDENTIALS_PATH,
+# GEMINI_API_KEY, OPENWEATHER_API_KEY (see .env.example).
+# The simulator is disabled: the real M5Stack device sends the data.
+
+services:
+  backend:
+    environment:
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:?Set AURASENSE_API_KEY in .env}
+      STORAGE_BACKEND: bigquery
+      GCP_PROJECT: ${GCP_PROJECT:?Set GCP_PROJECT in .env}
+      BQ_DATASET: ${BQ_DATASET:-iot_data}
+      BQ_TABLE: ${BQ_TABLE:-sensor_logs}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      AI_PROVIDER: gemini
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in .env}
+      WEATHER_PROVIDER: openweather
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:?Set OPENWEATHER_API_KEY in .env}
+      TTS_PROVIDER: edge
+    volumes:
+      - "${GCP_CREDENTIALS_PATH:?Set GCP_CREDENTIALS_PATH in .env}:/app/credentials.json:ro"
+
+  dashboard:
+    environment:
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:?Set AURASENSE_API_KEY in .env}
+      DATA_SOURCE: bigquery
+      GCP_PROJECT: ${GCP_PROJECT:?Set GCP_PROJECT in .env}
+      BQ_DATASET: ${BQ_DATASET:-iot_data}
+      BQ_TABLE: ${BQ_TABLE:-sensor_logs}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+    volumes:
+      - "${GCP_CREDENTIALS_PATH:?Set GCP_CREDENTIALS_PATH in .env}:/app/credentials.json:ro"
+
+  simulator:
+    profiles: ["simulator"]
