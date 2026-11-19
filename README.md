@@ -1,122 +1,76 @@
-# AuraSense 🌬️
-> *See the air you breathe. An end-to-end IoT indoor air quality monitoring and AI advice system.*
+# AuraSense
 
 [![CI](https://github.com/embarky/AuraSense-M5StackCore2/actions/workflows/ci.yml/badge.svg)](https://github.com/embarky/AuraSense-M5StackCore2/actions/workflows/ci.yml)
-[![Firmware](https://img.shields.io/badge/Firmware-UIFlow2.0_V2.4.4--CORE2-00BFFF.svg)](https://m5stack.com/)
-[![Runtime](https://img.shields.io/badge/Runtime-MicroPython-yellow.svg)](https://micropython.org/)
-[![Backend](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/Docker-Deployed-2496ED.svg?logo=docker)](https://www.docker.com/)
-[![GCP](https://img.shields.io/badge/GCP-Compute_Engine-4285F4.svg?logo=google-cloud)](https://cloud.google.com/)
-[![AI Brain](https://img.shields.io/badge/AI_Brain-Google_Gemini-8E75B2.svg)](https://aistudio.google.com/)
+![MicroPython](https://img.shields.io/badge/device-MicroPython%20·%20ESP32-2b2728)
+![Python](https://img.shields.io/badge/backend-Python%203.11%20·%20Flask-3776AB)
+![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+**See the air you breathe.** An end-to-end IoT system that measures indoor air quality on an ESP32 device, raises light and voice alerts when the air gets bad, answers spoken questions with an LLM, and keeps the history in the cloud for a web dashboard.
+
+<p align="center">
+  <img src="assets/demo-alert.gif" width="440" alt="The device detects a gas source: eCO2 jumps above 3,000 ppm, the reading turns red and the LED bar flashes red">
+  <br><sub>Real device: a gas source near the sensor pushes eCO₂ above 3,000 ppm; the reading turns red and the LED bar flashes.</sub>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=83zbSBvbl1c"><b>▶ Demo video</b></a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/design.md">Design document</a> ·
+  <a href="docs/user-manual.pdf">User manual</a>
+</p>
 
 ---
 
-### 🌟 Quick Links
+## Highlights
 
-[![YouTube Demo](https://img.shields.io/badge/YouTube-Watch_Demo-C4302B?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=83zbSBvbl1c)
-[![GitHub Repo](https://img.shields.io/badge/GitHub-View_Source-24292E?style=for-the-badge&logo=github&logoColor=white)](https://github.com/embarky/AuraSense-M5StackCore2)
-[![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-Streamlit-E66465?style=for-the-badge&logo=streamlit&logoColor=white)](http://34.62.132.20:8501/)
-[![User Manual](https://img.shields.io/badge/User_Manual-Download-1B9AAA?style=for-the-badge&logo=gitbook&logoColor=white)](assets/AuraSense_User_Manual.pdf)
+- **Edge to cloud, end to end** — MicroPython firmware on an M5Stack Core2, a Flask API, BigQuery storage and a Streamlit dashboard, deployed with Docker on Google Cloud.
+- **Alerts that work offline** — temperature, humidity, pressure, eCO₂, TVOC and motion read every 3 s; two-level LED alerts are decided on the device, and spoken alerts fire after 10 s at danger level, even with the screen off.
+- **Voice assistant** — hold a button and ask; Gemini transcribes and answers in one multimodal call with the last 24 hours of data as context, and Edge TTS speaks the reply (≈6–8 s round trip in the course demo).
+- **Runs anywhere with one command** — `docker compose up` starts the backend, dashboard and a physics-based virtual device. No hardware, API keys or cloud account needed.
+- **Tested down to the firmware** — 77 automated tests, including firmware tests executed on the MicroPython interpreter; CI builds the images and checks the full demo on every push.
 
----
+## The device
 
-## 1. Project Overview
+<p align="center"><img src="assets/device-screens.jpg" width="900" alt="Six device screens: home, sensor diagnostics, 5-day forecast, danger alert, offline mode, WiFi setup"></p>
 
-AuraSense is a comprehensive IoT solution designed to monitor, analyze, and visualize indoor air quality in real-time. Built with an edge-to-cloud architecture, it utilizes an M5Stack Core2 device to collect environmental data (eCO2, TVOC, Temperature, Humidity, Motion) and transmits it to a containerized Google Cloud Platform (GCP) backend.
+| Voice assistant | WiFi setup from a phone |
+|:---:|:---:|
+| <img src="assets/demo-voice.gif" width="300" alt="Holding button C records a question; the device uploads it and plays the answer"> | <img src="assets/demo-wifi-setup.gif" width="460" alt="Scanning the QR code, entering WiFi credentials on the phone, device reconnects"> |
+| Hold **C** to record → *Uploading…* → *Playing…* (sound in the video) | Scan the QR code, enter credentials, the device restarts and connects |
 
-Beyond simple data logging, AuraSense integrates contextual outdoor weather data and dynamic voice announcements to provide actionable, human-centric advice for a healthier living environment.
+## The dashboard
 
----
+<p align="center"><img src="assets/dashboard-live.gif" width="800" alt="Streamlit dashboard of the deployed system with trends, daily extremes and a motion heatmap"></p>
+<p align="center"><sub>The deployed dashboard during the course (May 2026), showing a week of real readings.</sub></p>
 
-![AuraSense Device Demo](assets/online.gif)
+## Architecture
 
----
+```mermaid
+flowchart LR
+    subgraph Edge["M5Stack Core2 · MicroPython"]
+        S[SGP30 · ENV III · PIR] --> L[Main loop]
+        L --> A[LED + screen alerts]
+        L --> V[Push-to-talk]
+    end
+    subgraph Backend["Flask API · Docker"]
+        API[REST API · auth · rate limits]
+        API --> DB[(SQLite / BigQuery)]
+        API --> AI[Gemini / rule-based]
+        API --> WX[OpenWeatherMap / synthetic]
+        API --> TTS[Edge TTS / chime]
+    end
+    DASH[Streamlit dashboard]
+    L -- "readings every 30 s" --> API
+    V -- "WAV question / answer" --> API
+    DASH --> API
+    DASH --> DB
+    SIM[Simulator] -. "local demo" .-> API
+```
 
-![AuraSense Dashboard Demo](assets/dashboard_devic_online.gif)
+Every external dependency sits behind a provider that configuration can switch between the real service (cloud deployment) and an offline stand-in (local demo). Details, API and design decisions: **[docs/design.md](docs/design.md)**.
 
----
-
-## 2. System Architecture & Tech Stack
-
-AuraSense implements a decoupled architecture, separating edge telemetry acquisition from cloud-based analytics.
-
-### 🔌 Edge Layer (M5Stack Core2)
-
-![AuraSense Hardware Setup](assets/AuraSense.png)
-
-* **Main Controller:** [M5Stack Core2 for AWS Edukit](https://docs.m5stack.com/en/core/core2_for_aws) (ESP32-D0WDQ6-V3, Touch Screen, integrated SPM1423 microphone, SK6812 RGB LED strip)
-* **Firmware & Runtime:** UIFlow2.0 V2.4.4-CORE2 executing MicroPython
-* **Hardware Port Mapping:**
-
-  | Port | Sensor | Measures |
-  |------|--------|----------|
-  | Port A (I2C) | SGP30 TVOC/eCO2 Gas Sensor | eCO2, TVOC |
-  | Port B (GPIO) | AS312 PIR Motion Sensor | Motion detection |
-  | Port C (I2C) | ENV III Unit (SHT30 + QMP6988) | Temperature, Humidity, Pressure |
-
-### ☁️ Cloud & Analytics Layer (GCP)
-
-| Component | Technology | Role |
-|-----------|-----------|------|
-| Backend | Python / Flask | API server, AI orchestration |
-| Data Lake | Google BigQuery | Time-series sensor persistence |
-| Dashboard | Streamlit | Real-time analytics UI |
-| AI Engine | Google Gemini API | Advice generation, voice assistant |
-| TTS | Edge TTS | Speech synthesis |
-| Weather | OpenWeatherMap API | Outdoor context |
-| Infrastructure | Docker Compose on GCP | Containerized deployment |
-
----
-
-## 3. Key Features
-
-* 📡 **Edge Telemetry** — Real-time data ingestion every 3 seconds, upload every 30 seconds
-* 🧠 **Context-Aware AI Advice** — Analyzes indoor/outdoor differentials to suggest physical actions
-* 🎙️ **Voice Assistant** — Push-to-talk with Gemini-powered multi-turn conversation
-* 🚨 **Smart Hardware Alerts** — RGB LED strip with threshold-based warning/danger states
-* 🌦️ **Weather Fusion** — IP-based geolocation with 5-day OpenWeatherMap forecast
-* 📊 **Live Dashboard** — Sparklines, anomaly log, trend analysis and AI recommendations
-* 🔇 **Offline Mode** — Full sensor monitoring and LED alerts without WiFi
-
----
-
-## 4. Feature Specifications
-
-### LED Alert Strategy (IO25 / SK6812 RGB)
-
-| State | Color | Interval | Condition |
-|-------|-------|----------|-----------|
-| Normal | OFF | — | All values within safe range |
-| Warning | 🟡 Yellow | 500ms flash | eCO2 > 800 ppm OR TVOC > 220 ppb OR humidity < 30% / > 65% |
-| Critical | 🔴 Red | 250ms flash | eCO2 > 1500 ppm OR TVOC > 660 ppb OR humidity < 20% / > 75% |
-
-### Screen Policy
-
-| State | Brightness | Trigger |
-|-------|-----------|---------|
-| Active | 100% | Motion detected / button / touch |
-| Dimmed | 20% | 60 seconds of no motion |
-| Off | 0% | 120 seconds of no motion |
-
-### Upload Intervals
-
-| Mode | Interval | Trigger |
-|------|----------|---------|
-| Standard | 30 seconds | Normal operation |
-| Burst | 5 seconds | Warning/danger state active |
-| Immediate | Instant | Critical anomaly initialized |
-
-### Voice Alerts
-
-* Triggered when Critical threshold persists for > **10 seconds**
-* Repeats every **30 seconds** while danger persists
-* Fires even when screen is off — overnight safety guaranteed
-
----
-
-## 5. Run It
-
-### ▶️ Quick start — no hardware, API keys or cloud account
+## Quick start
 
 ```bash
 git clone https://github.com/embarky/AuraSense-M5StackCore2.git
@@ -124,58 +78,87 @@ cd AuraSense-M5StackCore2
 docker compose up --build
 ```
 
-Open **http://localhost:8501**. A virtual device backfills 7 days of history and then streams live readings every 10 seconds, so every dashboard panel is populated within about a minute.
+Open **http://localhost:8501**. A virtual device backfills 7 days of history and then streams live readings, so every panel is populated within about a minute.
 
-| Part | Local demo | Cloud deployment |
-|------|-----------|------------------|
-| Device | `simulator/` — physics-based virtual room | M5Stack Core2 |
-| Storage | SQLite (Docker volume) | Google BigQuery |
-| AI advice & voice | Rule-based offline mock | Google Gemini |
-| Weather | Synthetic forecast | OpenWeatherMap |
-| Speech | Chime | Edge TTS |
+<details>
+<summary>What the local demo looks like and how the simulator works</summary>
+<br>
+<p align="center"><img src="assets/dashboard-local-demo.jpg" width="700" alt="Dashboard in local demo mode with simulated data"></p>
 
-The **simulator** models one room: a CO₂ mass balance driven by a two-person weekday/weekend routine, ventilation and window opening, cooking-related TVOC, heating set-points and humidity sources. It also reproduces a property of the real sensor: the SGP30 reports *estimated* eCO₂, which is biased upward by VOCs. Scenarios: `mixed` (default), `normal`, `stuffy`, `dry` — set `SIM_SCENARIO` in `.env`. To export a CSV without running the stack:
+The simulator models one room: a CO₂ mass balance driven by a two-person weekday/weekend routine, ventilation and window opening, cooking-related TVOC, heating set-points and humidity sources. It also reproduces a property of the real sensor: the SGP30 reports *estimated* eCO₂, which reads high when VOCs are present. Scenarios: `mixed` (default), `normal`, `stuffy`, `dry` — set `SIM_SCENARIO` in `.env`. Export a CSV without running the stack:
 
 ```bash
 python simulator/aurasense_sim.py export --days 7 --out readings.csv
 ```
 
-Each provider can also be switched individually (for example `AI_PROVIDER=gemini` with `GEMINI_API_KEY`); see `.env.example`.
+| Part | Local demo | Cloud deployment |
+|------|-----------|------------------|
+| Device | `simulator/` | M5Stack Core2 |
+| Storage | SQLite (Docker volume) | Google BigQuery |
+| AI advice & voice | Rule-based | Google Gemini |
+| Weather | Synthetic | OpenWeatherMap |
+| Speech | Chime | Edge TTS |
+</details>
 
-### ☁️ Cloud deployment with the real device
+### Cloud deployment with the real device
 
-**Required services:**
+1. Copy `.env.example` to `.env` and fill in the "Cloud deployment" values (API key, GCP project and service-account key, Gemini and OpenWeatherMap keys).
+2. `docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build`, behind an HTTPS reverse proxy for public access.
+3. Flash **UIFlow 2.0 v2.4.4** on the Core2, copy `device/config.example.py` to `device/config.py` with the server address and the same `API_KEY`, upload `device/` with Thonny, and set `main.py` to run on boot.
 
-| Service | Purpose | Where to get |
-|---------|---------|--------------|
-| Google Gemini API | AI advice + voice assistant | [aistudio.google.com](https://aistudio.google.com/) |
-| OpenWeatherMap API | Outdoor weather context | [openweathermap.org](https://openweathermap.org/api) |
-| GCP service account | BigQuery read/write access | GCP Console → IAM |
-| Google BigQuery | Sensor data persistence | GCP Console |
+Step-by-step instructions, routine tasks and a decommissioning checklist: [docs/operations.md](docs/operations.md).
 
-**Server:**
+## Hardware
 
-1. Copy `.env.example` to `.env` and fill in every value under "Cloud deployment"
-2. Run:
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build
-   ```
-3. Open ports **5001** and **8501** in your firewall. For any public deployment, put the backend behind an HTTPS reverse proxy.
+<table>
+<tr>
+<td width="44%"><img src="assets/hardware.jpg" alt="Real photo of the M5Stack Core2 with the SGP30, ENV III and PIR sensor units"></td>
+<td>
 
-**Device:**
+| Port | Unit | Measures |
+|------|------|----------|
+| A (I²C) | SGP30 | eCO₂, TVOC |
+| B (GPIO) | AS312 PIR | Motion |
+| C (I²C) | ENV III (SHT30 + QMP6988) | Temperature, humidity, pressure |
 
-1. Flash **UIFlow2.0 V2.4.4-CORE2** via [M5Burner](https://m5stack.com/pages/download)
-2. Copy `device/config.example.py` to `device/config.py` and set `SERVER_HOST`, `API_KEY` (same value as `AURASENSE_API_KEY`) and `DEVICE_ID`. WiFi credentials can be entered later through the QR-code setup page.
-3. Upload all files from `device/` to `/flash/` using Thonny
-4. Set the device to run `main.py` on startup via M5Burner
+**Controller:** M5Stack Core2 for AWS IoT EduKit — ESP32, 320×240 touch screen, microphone, speaker, 10 RGB LEDs. Firmware: UIFlow 2.0 v2.4.4 (MicroPython).
 
-> **Security:** every API endpoint except `GET /health` requires the `X-API-Key` header. `config.py`, `config.json`, `.env` and key files are gitignored and excluded from Docker images; install the [gitleaks](https://github.com/gitleaks/gitleaks) pre-commit hook with `pip install pre-commit && pre-commit install`.
+| Alert | eCO₂ | TVOC | Humidity | LEDs |
+|---|---|---|---|---|
+| Warning | > 800 ppm | > 220 ppb | < 30 % / > 65 % | yellow |
+| Danger | > 1500 ppm | > 660 ppb | < 20 % / > 75 % | red + voice |
 
----
+Screen dims after 60 s and turns off after 120 s without motion; uploads every 30 s, every 5 s during an alert.
+</td>
+</tr>
+</table>
 
-## Development & Testing
+## Engineering challenges
 
-Each component is tested in its own environment, the same way CI runs it:
+The interesting problems appeared only after the device had been running for a while. Full write-up in [design.md §6](docs/design.md#6-engineering-challenges).
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Sensors stopped refreshing after NTP sync | Work was scheduled with the wall clock, which jumped when the real date was set | Monotonic `ticks_ms()` for scheduling; wall clock only for display |
+| Uploads failed after about an hour | ESP32 network stack exhausted by half-open sockets | Guaranteed socket cleanup, `Connection: close`, software watchdog |
+| Crash after playing speech | Audio buffers filled the limited RAM | Release buffers and collect garbage after playback |
+| Dashboard flickered between Live and Offline | Two server processes each held their own copy of the live state | One process with threads and a lock |
+| Weather for the wrong place | Behind Docker the server saw an internal IP, not the device's | Use the forwarded public IP, discard private ranges |
+| Clock one hour off in winter | Firmware hard-coded UTC+2 | DST-aware offset sent by the backend |
+
+## Repository layout
+
+```
+device/        MicroPython firmware: sensors, pages, connectivity, alerts
+backend/       Flask API: routes/, storage/ (SQLite, BigQuery), services/ (Gemini, TTS, weather, mocks)
+dashboard/     Streamlit dashboard: BigQuery and SQLite data sources, charts
+simulator/     Physics-based virtual device for demos and tests
+tests/         backend, dashboard, simulator and MicroPython firmware tests
+docs/          design document, operations guide, user manual
+assets/        images and recordings used in this README
+```
+
+## Development and testing
 
 ```bash
 pip install -r backend/requirements.txt pytest && pytest tests/backend
@@ -183,39 +166,33 @@ pip install -r dashboard/requirements.txt pytest && pytest tests/dashboard tests
 tests/device/run_device_tests.sh        # needs micropython + mpy-cross
 ```
 
-| Suite | What it covers |
-|-------|----------------|
-| `tests/backend` | API authentication and rate limiting, ingestion and batch validation, query bounds, per-device voice history, SQLite storage, provider selection |
-| `tests/dashboard` | Anomaly rules and every dashboard view on a database filled by the simulator |
-| `tests/simulator` | Physical plausibility, occupancy patterns, scenarios, determinism |
-| `tests/device` | Firmware compiled with the MicroPython compiler and executed on MicroPython with the M5Stack hardware modules stubbed out |
+| Suite | Covers |
+|-------|--------|
+| `tests/backend` (50) | Authentication and rate limiting, ingestion and batch validation, query bounds, per-device voice history, storage, provider selection |
+| `tests/dashboard` (13) | Anomaly rules and every dashboard view on a database filled by the simulator |
+| `tests/simulator` (9) | Physical plausibility, occupancy patterns, scenarios, determinism |
+| `tests/device` (5) | Firmware compiled with the MicroPython compiler and executed on MicroPython with the hardware modules stubbed |
 
-[GitHub Actions](.github/workflows/ci.yml) runs all suites, ruff and a gitleaks secret scan on every push, then builds the Docker images and checks that `docker compose up` delivers simulated data to the dashboard.
+[CI](.github/workflows/ci.yml) runs ruff, a gitleaks secret scan and all suites on every push, then builds the Docker images and checks that `docker compose up` delivers simulated data to the dashboard. Install the pre-commit secret scan locally with `pip install pre-commit && pre-commit install`.
 
----
+## Project history
 
-## 6. Data Persistence
+| Version | When | What |
+|---|---|---|
+| **v1.0** | May 2026 | Course project (team of two): firmware, Flask backend, BigQuery, Streamlit dashboard, deployed on Google Cloud and demonstrated on the device. Cloud resources were shut down after the course. |
+| **v2.0** | Nov 2026 | Post-course work by Hang Yang: security clean-up (API authentication, secrets removed from history), concurrency, timezone and query fixes, pluggable providers with a one-command local demo, device simulator, 77 tests and CI, documentation. |
 
-* **SQLite** (local demo) or **Google BigQuery** (cloud) behind one storage interface (`backend/storage/`)
-* **Timezone:** All timestamps normalized to `Europe/Zurich`
-* **Schema:** `timestamp`, `temperature`, `humidity`, `pressure`, `eco2`, `tvoc`, `motion_detected`, `timezone`
-* **Query windows:** 1h / 24h / 7d / custom range supported
+See [CHANGELOG.md](CHANGELOG.md). Known limitations, such as eCO₂ being an estimate rather than an NDIR CO₂ measurement, are listed in [design.md §9](docs/design.md#9-limitations-and-future-work).
 
----
-
-## Individual Contributions
+## Team
 
 | Member | Contributions |
 |--------|--------------|
-| **Hang Yang** | Device firmware (MicroPython) — sensor integration, LED alert system, screen management, voice assistant, WiFi stability and network resilience. Flask backend — API design, Gemini AI integration, TTS pipeline, BigQuery persistence, weather service, Docker deployment on GCP. |
-| **Yi Huang** | Streamlit dashboard — real-time overview, sparkline charts, outdoor weather card, anomaly log panel, trend analysis, historical insights, AI advice integration, online/offline detection. |
+| **Hang Yang** | v1: device firmware (sensors, LED alerts, screen management, voice assistant, WiFi resilience), Flask backend (API, Gemini, TTS, BigQuery, weather), Docker deployment on GCP. v2: all post-course changes listed above. |
+| **Yi Huang** | v1: Streamlit dashboard (real-time overview, sparklines, outdoor weather card, anomaly log, trend analysis, historical insights, AI advice, online/offline detection). |
 
----
+Built for *Cloud and Advanced Analytics*, University of Lausanne, 2026. v2 was developed with AI pair-programming assistance (Claude); see the commit trailers.
 
-## Made by
+## License
 
-**Hang Yang & Yi Huang** — University of Lausanne, Cloud and Advanced Analytics 2026
-
----
-
-*AuraSense — See the air you breathe.*
+[MIT](LICENSE)
