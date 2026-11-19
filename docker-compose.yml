@@ -1,9 +1,20 @@
 # docker-compose.yml — AuraSense full stack
 # "AuraSense: See the air you breathe."
 #
-# Configuration comes from a .env file next to this one (copy .env.example).
-# Secrets are mounted read-only from paths you choose; nothing project-specific
-# is hard-coded here.
+# Local demo (default) — no hardware, API keys or cloud account needed:
+#
+#     docker compose up --build
+#     open http://localhost:8501
+#
+# The simulator backfills 7 days of realistic history and then streams live
+# readings like the M5Stack device. Data is stored in SQLite in a Docker
+# volume; AI advice, weather and speech use offline mock providers.
+#
+# Cloud deployment (BigQuery, Gemini, OpenWeatherMap, Edge TTS):
+#
+#     docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build
+#
+# Settings come from a .env file next to this one (see .env.example).
 
 services:
   backend:
@@ -12,13 +23,21 @@ services:
     container_name: aurasense-backend
     ports:
       - "5001:5001"
-    volumes:
-      - "${GCP_CREDENTIALS_PATH:?Set GCP_CREDENTIALS_PATH in .env}:/app/credentials.json:ro"
-      - "${BACKEND_CONFIG_PATH:-./backend/config.json}:/app/config.json:ro"
     environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
-      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-}
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-local-demo-key}
+      STORAGE_BACKEND: sqlite
+      SQLITE_PATH: /data/aurasense.db
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      WEATHER_PROVIDER: ${WEATHER_PROVIDER:-mock}
+      TTS_PROVIDER: ${TTS_PROVIDER:-mock}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - aurasense-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     restart: unless-stopped
 
   dashboard:
@@ -29,13 +48,29 @@ services:
       - "8501:8501"
     environment:
       FLASK_URL: http://backend:5001
-      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-}
-      GCP_PROJECT: ${GCP_PROJECT:?Set GCP_PROJECT in .env}
-      BQ_DATASET: ${BQ_DATASET:-iot_data}
-      BQ_TABLE: ${BQ_TABLE:-sensor_logs}
-      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-local-demo-key}
+      DATA_SOURCE: sqlite
+      SQLITE_PATH: /data/aurasense.db
     volumes:
-      - "${GCP_CREDENTIALS_PATH:?Set GCP_CREDENTIALS_PATH in .env}:/app/credentials.json:ro"
+      - aurasense-data:/data:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+
+  simulator:
+    build:
+      context: ./simulator
+    container_name: aurasense-simulator
+    environment:
+      AURASENSE_URL: http://backend:5001
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-local-demo-key}
+      SIM_DEVICE_ID: sim-01
+      SIM_SCENARIO: ${SIM_SCENARIO:-mixed}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  aurasense-data:

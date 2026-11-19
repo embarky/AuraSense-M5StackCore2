@@ -40,7 +40,7 @@ def voice():
     t_start = time.time()
     gemini  = current_app.gemini_service
     tts     = current_app.tts_service
-    bq      = current_app.bq_service
+    storage = current_app.storage
 
     wav_data = request.data
     if not wav_data or len(wav_data) < 44:
@@ -64,11 +64,11 @@ def voice():
         # Recent 24-hour context so the AI can answer questions such as
         # "How was the air quality last night?"
         sensor_ctx = None
-        if bq is not None:
+        if storage is not None:
             try:
-                sensor_ctx = bq.get_recent_summary(hours=24)
+                sensor_ctx = storage.get_recent_summary(hours=24)
             except Exception as exc:
-                log.warning("BigQuery context fetch failed: %s", exc)
+                log.warning("Sensor context fetch failed: %s", exc)
 
         transcript, reply = gemini.send_audio(
             wav_data, sensor_context=sensor_ctx, session_id=get_device_id()
