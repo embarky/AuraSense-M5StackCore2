@@ -1,0 +1,12 @@
+# Keep secrets, local data and caches out of the image
+config.json
+*.json
+!config-example.json
+.env
+data/
+*.db
+*.db-*
+__pycache__/
+*.pyc
+venv/
+.venv/
