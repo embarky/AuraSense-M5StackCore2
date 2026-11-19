@@ -9,10 +9,13 @@ announced by the edge device when presence is detected.
 
 from __future__ import annotations
 
+import logging
+
+from config import Config
 from google import genai
 from google.genai import types
 
-from config import Config
+log = logging.getLogger(__name__)
 
 
 _ADVICE_PROMPT = """You are the AI persona for "AuraSense", a premium home environment and climate advisor.
@@ -28,7 +31,7 @@ class AIAdviceService:
 
     def __init__(self) -> None:
         self._client = genai.Client(api_key=Config.GEMINI_API_KEY)
-        print("[AuraSense | AIAdviceService] Initialized.")
+        log.info("Initialized.")
 
     def generate_advice(
         self,
@@ -58,10 +61,10 @@ class AIAdviceService:
                 ),
             )
             advice = response.text.strip()
-            print(f"[AuraSense | AIAdviceService] Generated: {advice}")
+            log.info(f"Generated: {advice}")
             return advice
         except Exception as exc:
-            print(f"[AuraSense | AIAdviceService] ERROR: {exc}")
+            log.error(f"Advice generation failed: {exc}")
             return "Unable to generate AuraSense advice at this time."
 
     # ── Helpers ───────────────────────────────────────────────────────────────

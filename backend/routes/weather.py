@@ -7,33 +7,32 @@ GET /api/forecast    Returns a 5-day daily aggregated weather forecast.
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, request
+import logging
+
+from flask import Blueprint, current_app, jsonify
+from security import get_public_client_ip, require_api_key
+
+log = logging.getLogger(__name__)
 
 weather_bp = Blueprint("weather", __name__)
 
 
 @weather_bp.route("/api/forecast", methods=["GET"])
+@require_api_key
 def forecast():
     """
     Provides the 5-day aggregated weather forecast for the edge device UI.
-    Pipeline: Core2 → GET Request → WeatherService (OWM) → JSON Forecast → Core2.
+    Pipeline: Core2 → GET request → WeatherService (OWM) → JSON Forecast → Core2.
     """
     try:
         # Fetch the service instance attached to the main Flask app
         ws = current_app.weather_service
         
-        # ── Extract real client IP (handles reverse proxies like Nginx) ──
-        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        if client_ip:
-            client_ip = client_ip.split(',')[0].strip()
-            if client_ip.startswith(("172.", "192.168.", "10.")):
-                client_ip = None
-        
         # Pass the client IP to fetch the localized forecast for the device
-        forecast_data = ws.get_forecast(client_ip)
+        forecast_data = ws.get_forecast(get_public_client_ip())
         
         if not forecast_data:
-            print("[AuraSense | Weather API] WARNING: Forecast data returned empty.")
+            log.warning("Forecast data returned empty")
             return jsonify({
                 "status": "error",
                 "message": "Forecast returned empty."
@@ -45,11 +44,6 @@ def forecast():
             "forecast": forecast_data
         }), 200
 
-    except Exception as exc:
-        import traceback
-        print(f"[AuraSense | Weather API] ERROR: {exc}")
-        traceback.print_exc()
-        return jsonify({
-            "status": "error",
-            "message": f"Internal error: {exc}"
-        }), 500
+    except Exception:
+        log.exception("Forecast request failed")
+        return jsonify({"status": "error", "message": "Internal error."}), 500

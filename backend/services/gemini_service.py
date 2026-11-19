@@ -8,13 +8,16 @@ announcements, and critical anomaly alerts using Google's GenAI SDK.
 
 from __future__ import annotations
 
-import re
+import logging
+import threading
+from collections import defaultdict
 from typing import Optional
 
+from config import Config
 from google import genai
 from google.genai import types
 
-from config import Config
+log = logging.getLogger(__name__)
 
 
 _SYSTEM_PROMPT = """You are "AuraSense", an intelligent, premium home climate and air quality assistant.
@@ -47,8 +50,11 @@ class GeminiService:
 
     def __init__(self) -> None:
         self._client = genai.Client(api_key=Config.GEMINI_API_KEY)
-        self._history: list[types.Content] = []
-        print(f"[AuraSense | Gemini] Initialized — Model: {Config.GEMINI_MODEL}")
+        # Conversation history is kept per device so that several devices (or
+        # concurrent requests) never read or overwrite each other's context.
+        self._histories: dict[str, list[types.Content]] = defaultdict(list)
+        self._lock = threading.Lock()
+        log.info(f"Initialized — Model: {Config.GEMINI_MODEL}")
 
     # ── Voice Assistant ───────────────────────────────────────────────────────
 
@@ -56,6 +62,7 @@ class GeminiService:
         self,
         wav_data: bytes,
         sensor_context: Optional[str] = None,
+        session_id: str = "default",
     ) -> tuple[str, str]:
         """
         Processes an incoming audio stream, transcribes it, and generates an 
@@ -65,10 +72,12 @@ class GeminiService:
             inline_data=types.Blob(mime_type="audio/wav", data=wav_data)
         )
         current_message = types.Content(role="user", parts=[audio_part])
+        with self._lock:
+            history = list(self._histories[session_id])
 
         response = self._client.models.generate_content(
             model=Config.GEMINI_MODEL,
-            contents=self._history + [current_message],
+            contents=history + [current_message],
             config=types.GenerateContentConfig(
                 system_instruction=self._build_system_prompt(sensor_context),
                 tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -79,19 +88,21 @@ class GeminiService:
         transcript = self._extract_heard(raw)
         reply      = self._extract_reply(raw)
 
-        print(f"[AuraSense | Gemini] HEARD: {transcript}")
-        print(f"[AuraSense | Gemini] REPLY: {reply}")
+        log.info(f"HEARD: {transcript}")
+        log.info(f"REPLY: {reply}")
 
-        # Maintain conversational memory
+        # Maintain conversational memory for this device only
+        new_turns = []
         if transcript:
-            self._history.append(
+            new_turns.append(
                 types.Content(role="user", parts=[types.Part(text=transcript)])
             )
-        self._history.append(
-            types.Content(role="model", parts=[types.Part(text=reply)])
-        )
+        new_turns.append(types.Content(role="model", parts=[types.Part(text=reply)]))
 
-        self._trim_history()
+        max_messages = Config.MAX_CONVERSATION_TURNS * 2
+        with self._lock:
+            updated = self._histories[session_id] + new_turns
+            self._histories[session_id] = updated[-max_messages:]
         return transcript, reply
 
     # ── Announcement Generation ───────────────────────────────────────────────
@@ -124,10 +135,10 @@ class GeminiService:
                 ),
             )
             text = response.text.strip()
-            print(f"[AuraSense | Gemini] Announcement: {text}")
+            log.info(f"Announcement: {text}")
             return text
         except Exception as exc:
-            print(f"[AuraSense | Gemini] Announcement ERROR: {exc}")
+            log.error(f"Announcement generation failed: {exc}")
             return ""
 
     def generate_anomaly_alert(
@@ -172,22 +183,28 @@ class GeminiService:
                 ),
             )
             text = response.text.strip()
-            print(f"[AuraSense | Gemini] Alert Generated: {text}")
+            log.info(f"Alert Generated: {text}")
             return text
         except Exception as exc:
-            print(f"[AuraSense | Gemini] Alert ERROR: {exc}")
+            log.error(f"Alert generation failed: {exc}")
             return situation  # Graceful fallback to raw description
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
-    def reset_history(self) -> None:
-        """Clears the conversational context buffer."""
-        self._history.clear()
-        print("[AuraSense | Gemini] Conversation history cleared.")
+    def reset_history(self, session_id: Optional[str] = None) -> None:
+        """Clear the conversation history of one device, or of all devices."""
+        with self._lock:
+            if session_id is None:
+                self._histories.clear()
+            else:
+                self._histories.pop(session_id, None)
+        log.info("Conversation history cleared.")
 
     @property
     def history_turns(self) -> int:
-        return len(self._history) // 2
+        """Total conversation turns held in memory across all devices."""
+        with self._lock:
+            return sum(len(h) for h in self._histories.values()) // 2
 
     def needs_sensor_context(self, transcript: str) -> bool:
         """Determine if the user's query requires current home telemetry."""
@@ -247,9 +264,3 @@ class GeminiService:
         """Extracts the actual response intended for the TTS engine."""
         lines = [l for l in raw.splitlines() if l.strip() and not l.startswith("HEARD:")]
         return "\n".join(lines).strip() or raw.strip()
-
-    def _trim_history(self) -> None:
-        """Prevents the context window from growing indefinitely."""
-        max_messages = Config.MAX_CONVERSATION_TURNS * 2
-        if len(self._history) > max_messages:
-            self._history = self._history[-max_messages:]

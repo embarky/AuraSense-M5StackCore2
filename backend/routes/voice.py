@@ -2,25 +2,36 @@
 routes/voice.py — Voice assistant and audio announcement endpoints for AuraSense.
 "AuraSense: See the air you breathe."
 
-POST /voice     WAV in → WAV out (Interactive voice assistant)
-POST /speak     JSON in → WAV out (Ambient environmental announcement)
-POST /alert     JSON in → WAV out (Critical anomaly alert)
-POST /reset     Clear conversation history buffer
-GET  /health    Service status and metrics
+POST /voice     WAV in → WAV out (interactive voice assistant)
+POST /speak     JSON in → WAV out (ambient environmental announcement)
+POST /alert     JSON in → WAV out (critical anomaly alert)
+POST /reset     Clear the calling device's conversation history
+GET  /health    Service status (no authentication, for uptime checks)
+
+Every endpoint except /health requires the X-API-Key header. The endpoints
+that call paid LLM / TTS APIs are rate-limited per client.
 """
 
 from __future__ import annotations
 
 import io
+import logging
 import time
 import wave
 
 from flask import Blueprint, Response, current_app, jsonify, request
+from security import get_device_id, rate_limit, require_api_key
+
+log = logging.getLogger(__name__)
 
 voice_bp = Blueprint("voice", __name__)
 
+_INTERNAL_ERROR = "Internal error."
+
 
 @voice_bp.route("/voice", methods=["POST"])
+@require_api_key
+@rate_limit(limit=10, per_seconds=60)
 def voice():
     """
     Primary voice interaction endpoint for the edge device.
@@ -35,71 +46,65 @@ def voice():
     if not wav_data or len(wav_data) < 44:
         return Response("Empty or invalid audio payload.", status=400)
 
-    print(f"[AuraSense | Voice] Received audio payload: {len(wav_data):,} bytes")
+    log.info("Received audio payload: %s bytes", f"{len(wav_data):,}")
 
-    # Diagnostic block: Validates the incoming WAV header from the ESP32.
-    # Crucial for debugging hardware microphone configuration issues.
+    # Validate the incoming WAV header from the ESP32 — useful when debugging
+    # the hardware microphone configuration.
     try:
         with wave.open(io.BytesIO(wav_data)) as wf:
-            print(
-                f"[AuraSense | Voice] Format: {wf.getframerate()}Hz | "
-                f"{wf.getnchannels()}ch | "
-                f"{wf.getsSpampwidth() * 8}-bit | "
-                f"{wf.getnframes()} frames"
+            log.info(
+                "Audio format: %sHz | %sch | %s-bit | %s frames",
+                wf.getframerate(), wf.getnchannels(),
+                wf.getsampwidth() * 8, wf.getnframes(),
             )
     except Exception as exc:
-        print(f"[AuraSense | Voice] WARNING: Malformed WAV header - {exc}")
+        log.warning("Malformed WAV header: %s", exc)
 
     try:
-        # Fetch the latest 24-hour environmental context so the AI can 
-        # answer questions like "How was the air quality last night?"
+        # Recent 24-hour context so the AI can answer questions such as
+        # "How was the air quality last night?"
         sensor_ctx = None
         if bq is not None:
             try:
                 sensor_ctx = bq.get_recent_summary(hours=24)
             except Exception as exc:
-                print(f"[AuraSense | Voice] BigQuery context fetch failed: {exc}")
+                log.warning("BigQuery context fetch failed: %s", exc)
 
-        # Process through Gemini AI
-        transcript, reply = gemini.send_audio(wav_data, sensor_context=sensor_ctx)
-        print(f"[AuraSense | Voice] Processing latency: {time.time() - t_start:.2f}s")
+        transcript, reply = gemini.send_audio(
+            wav_data, sensor_context=sensor_ctx, session_id=get_device_id()
+        )
+        log.info("Voice processing latency: %.2fs", time.time() - t_start)
 
         if not reply:
             return Response(b"", status=204)
 
-        # Synthesize reply back to audio
         wav_reply = tts.text_to_wav(reply)
         return Response(wav_reply, status=200, mimetype="audio/wav")
 
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return Response(f"Internal error: {exc}", status=500)
+    except Exception:
+        log.exception("Voice pipeline failed")
+        return Response(_INTERNAL_ERROR, status=500)
 
 
 @voice_bp.route("/speak", methods=["POST"])
+@require_api_key
+@rate_limit(limit=6, per_seconds=60)
 def speak():
     """
-    Ambient announcement triggered by the device's PIR motion sensor.
+    Hourly ambient announcement.
 
-    Request JSON:
-    {
-        "sensor_data": {...},   # Current indoor sensor telemetry
-        "outdoor":     {...},   # Current outdoor weather
-        "forecast":    [...]    # 5-day forecast list
-    }
-
+    Request JSON: {"sensor_data": {...}, "outdoor": {...}, "forecast": [...]}
     Returns WAV audio bytes ready for playback.
     """
     gemini = current_app.gemini_service
     tts    = current_app.tts_service
 
-    body = request.json or {}
+    body = request.get_json(silent=True) or {}
     sensor_data = body.get("sensor_data", {})
     outdoor     = body.get("outdoor",     {})
     forecast    = body.get("forecast",    [])
 
-    print(f"[AuraSense | Speak] Generating ambient announcement...")
+    log.info("Generating ambient announcement")
 
     try:
         text = gemini.generate_announcement(sensor_data, outdoor, forecast)
@@ -107,36 +112,32 @@ def speak():
             return Response(b"", status=204)
 
         wav = tts.text_to_wav(text)
-        print(f"[AuraSense | Speak] Audio ready: {len(wav):,} bytes")
+        log.info("Announcement audio ready: %s bytes", f"{len(wav):,}")
         return Response(wav, status=200, mimetype="audio/wav")
 
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return Response(f"Internal error: {exc}", status=500)
+    except Exception:
+        log.exception("Announcement pipeline failed")
+        return Response(_INTERNAL_ERROR, status=500)
 
 
 @voice_bp.route("/alert", methods=["POST"])
+@require_api_key
+@rate_limit(limit=6, per_seconds=60)
 def alert():
     """
-    Urgent anomaly alert triggered when environmental readings exceed safe thresholds.
+    Spoken alert when readings exceed the critical thresholds.
 
-    Request JSON:
-    {
-        "sensor_data":  {...},
-        "anomaly_type": "co2_danger" | "co2_warning" | "humidity_low" | "humidity_high"
-    }
-
-    Returns WAV audio bytes prioritizing immediate user action (e.g., "Open a window").
+    Request JSON: {"sensor_data": {...}, "anomaly_type": "co2_danger" | ...}
+    Returns WAV audio bytes prioritising immediate action ("Open a window").
     """
     gemini = current_app.gemini_service
     tts    = current_app.tts_service
 
-    body        = request.json or {}
+    body        = request.get_json(silent=True) or {}
     sensor_data = body.get("sensor_data",  {})
-    anomaly     = body.get("anomaly_type", "")
+    anomaly     = str(body.get("anomaly_type", ""))[:100]
 
-    print(f"[AuraSense | Alert] Triggered: {anomaly}")
+    log.info("Alert triggered: %s", anomaly)
 
     try:
         text = gemini.generate_anomaly_alert(sensor_data, anomaly)
@@ -144,29 +145,23 @@ def alert():
             return Response(b"", status=204)
 
         wav = tts.text_to_wav(text)
-        print(f"[AuraSense | Alert] Audio ready: {len(wav):,} bytes")
+        log.info("Alert audio ready: %s bytes", f"{len(wav):,}")
         return Response(wav, status=200, mimetype="audio/wav")
 
-    except Exception as exc:
-        import traceback
-        traceback.print_exc()
-        return Response(f"Internal error: {exc}", status=500)
+    except Exception:
+        log.exception("Alert pipeline failed")
+        return Response(_INTERNAL_ERROR, status=500)
 
 
 @voice_bp.route("/reset", methods=["POST"])
+@require_api_key
 def reset():
-    """Clear the voice-assistant conversation history buffer."""
-    current_app.gemini_service.reset_history()
-    return jsonify({"status": "ok", "message": "AuraSense conversation history cleared."})
+    """Clear the calling device's voice-assistant conversation history."""
+    current_app.gemini_service.reset_history(get_device_id())
+    return jsonify({"status": "ok", "message": "Conversation history cleared."})
 
 
 @voice_bp.route("/health", methods=["GET"])
 def health():
-    """Service health and diagnostic check."""
-    gemini = current_app.gemini_service
-    return jsonify({
-        "status":        "ok",
-        "service":       "AuraSense Voice API",
-        "gemini_model":  current_app.config["GEMINI_MODEL"],
-        "history_turns": gemini.history_turns,
-    })
+    """Unauthenticated liveness check; reveals no configuration details."""
+    return jsonify({"status": "ok", "service": "AuraSense API"})
