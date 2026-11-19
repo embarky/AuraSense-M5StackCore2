@@ -360,13 +360,15 @@ def _save_wifi(ssid: str, pwd: str) -> None:
     sw = pw = False
     for line in lines:
         if line.startswith("WIFI_SSID"):
-            new.append('WIFI_SSID     = "{}"\n'.format(ssid)); sw = True
+            new.append("WIFI_SSID     = {}\n".format(repr(ssid))); sw = True
         elif line.startswith("WIFI_PASSWORD"):
-            new.append('WIFI_PASSWORD = "{}"\n'.format(pwd)); pw = True
+            new.append("WIFI_PASSWORD = {}\n".format(repr(pwd))); pw = True
         else:
             new.append(line)
-    if not sw: new.append('WIFI_SSID     = "{}"\n'.format(ssid))
-    if not pw: new.append('WIFI_PASSWORD = "{}"\n'.format(pwd))
+    # repr() quotes and escapes the values, so an SSID or password containing
+    # quotes or backslashes can no longer break config.py (and the next boot).
+    if not sw: new.append("WIFI_SSID     = {}\n".format(repr(ssid)))
+    if not pw: new.append("WIFI_PASSWORD = {}\n".format(repr(pwd)))
     with open("config.py", "w") as f:
         for line in new:
             f.write(line)

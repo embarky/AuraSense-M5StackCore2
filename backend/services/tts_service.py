@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import re
 
 import edge_tts
 from pydub import AudioSegment
+
+log = logging.getLogger(__name__)
 
 
 # ── Voice map (Language Code → Premium Neural Voice) ──────────────────────────
@@ -52,8 +55,8 @@ class TTSService:
         lang, clean_text = self._parse_reply(raw_text)
         voice            = VOICE_MAP.get(lang, VOICE_MAP["en"])
 
-        print(f"[AuraSense | TTS] Lang: {lang} | Voice: {voice} | Chars: {len(clean_text)}")
-        print(f"[AuraSense | TTS] Text: {clean_text[:80]}...")
+        log.info(f"Lang: {lang} | Voice: {voice} | Chars: {len(clean_text)}")
+        log.info(f"Text: {clean_text[:80]}...")
 
         # Await the async edge-tts network call
         mp3_bytes = asyncio.run(self._synthesize_mp3(clean_text, voice))
@@ -73,7 +76,7 @@ class TTSService:
         audio.export(buf, format="wav")
         wav_bytes = buf.getvalue()
         
-        print(f"[AuraSense | TTS] Exported: {len(wav_bytes):,} bytes WAV")
+        log.info(f"Exported: {len(wav_bytes):,} bytes WAV")
         return wav_bytes
 
     # ── Private Helpers ───────────────────────────────────────────────────────

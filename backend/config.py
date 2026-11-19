@@ -3,14 +3,25 @@ config.py — Centralized configuration for the AuraSense backend.
 "AuraSense: See the air you breathe."
 
 Sensitive values (API keys, etc.) are stored in config.json (gitignored).
-Copy config.example.json to config.json and fill in your specific values.
+Copy config-example.json to config.json and fill in your specific values.
+The device/dashboard API key can also be supplied through the
+AURASENSE_API_KEY environment variable, which takes precedence.
 
 The config file is resolved relative to this file's location,
 ensuring the application can be launched from any working directory.
 """
 
 import json
+import logging
 import os
+
+# ── Logging (configured here because config is the first module imported) ────
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
+)
+log = logging.getLogger("aurasense.config")
 
 # ── Locate and load config.json ───────────────────────────────────────────────
 
@@ -20,11 +31,11 @@ _CONFIG_PATH = os.path.join(_BASE_DIR, "config.json")
 try:
     with open(_CONFIG_PATH) as f:
         _cfg = json.load(f)
-    print(f"[AuraSense | Config] Successfully loaded from {_CONFIG_PATH}")
+    log.info("Configuration loaded from %s", _CONFIG_PATH)
 except FileNotFoundError:
     raise RuntimeError(
         f"[AuraSense | Error] Configuration file not found: {_CONFIG_PATH}\n"
-        "Please copy config.example.json to config.json and populate your values."
+        "Please copy config-example.json to config.json and populate your values."
     )
 
 
@@ -42,7 +53,6 @@ class Config:
     GCP_PROJECT:          str = _cfg.get("gcp_project", "")
     GCP_CREDENTIALS_FILE: str = _cfg.get("gcp_credentials_file", "")
     
-    # Updated default dataset name to reflect the new AuraSense branding
     BQ_DATASET:           str = _cfg.get("bq_dataset", "aurasense")
     BQ_TABLE:             str = _cfg.get("bq_table",   "sensor_readings")
 
@@ -57,6 +67,11 @@ class Config:
     # ── AI Health Advice ──────────────────────────────────────
     # Minimum seconds between consecutive AI advice generations (Quota guard)
     AI_COOLDOWN_SECONDS: int = _cfg.get("ai_cooldown_seconds", 600)
+
+    # ── API authentication ───────────────────────────────────
+    # Shared secret that the device and dashboard send in the X-API-Key header.
+    # Empty means "open dev mode" (a warning is logged at startup).
+    API_KEY: str = os.getenv("AURASENSE_API_KEY") or _cfg.get("api_key", "")
 
     # ── Flask Server ──────────────────────────────────────────
     DEBUG: bool = _cfg.get("debug", False)
@@ -73,6 +88,6 @@ if Config.GCP_CREDENTIALS_FILE:
     _cred_path = os.path.join(_BASE_DIR, Config.GCP_CREDENTIALS_FILE)
     if os.path.exists(_cred_path):
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _cred_path
-        print(f"[AuraSense | Config] GCP credentials bound to: {_cred_path}")
+        log.info("GCP credentials bound to %s", _cred_path)
     else:
-        print(f"[AuraSense | Warning] GCP credentials file not found at: {_cred_path}")
+        log.warning("GCP credentials file not found at %s", _cred_path)

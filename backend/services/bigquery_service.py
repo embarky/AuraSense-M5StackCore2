@@ -1,9 +1,12 @@
 """
 services/bigquery_service.py — Google BigQuery data layer for AuraSense.
 
-Actual table: caa-project-493719.iot_data.sensor_logs
+Table: <gcp_project>.<bq_dataset>.<bq_table> (configured in config.json)
 
-Schema (matches what was created in BigQuery Console):
+All time-window values are passed as query parameters and clamped to a
+maximum range, so a request can never inject SQL or trigger a full-table scan.
+
+Schema:
     timestamp       TIMESTAMP
     temperature     FLOAT
     humidity        FLOAT
@@ -16,14 +19,23 @@ Schema (matches what was created in BigQuery Console):
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from google.cloud import bigquery
+from config import Config
 from google.api_core.exceptions import GoogleAPIError, RetryError
+from google.cloud import bigquery
 from urllib3.exceptions import ProtocolError
 
-from config import Config
+log = logging.getLogger(__name__)
+
+MAX_HOURS = 24 * 7
+MAX_DAYS  = 90
+
+
+def _clamp(value: int, low: int, high: int) -> int:
+    return max(low, min(high, int(value)))
 
 
 class BigQueryService:
@@ -32,7 +44,7 @@ class BigQueryService:
     def __init__(self) -> None:
         self._client = bigquery.Client(project=Config.GCP_PROJECT)
         self._table  = f"{Config.GCP_PROJECT}.{Config.BQ_DATASET}.{Config.BQ_TABLE}"
-        print(f"[AuraSense | BigQuery] Connected to table: {self._table}")
+        log.info("Connected to BigQuery table: %s", self._table)
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
@@ -56,26 +68,26 @@ class BigQueryService:
             "timezone":        payload.get("timezone", "UTC"),
         }
 
-        # 🌟 ARMOR PLATING: Catch network and API errors to prevent HTTP 500s
+        # Catch network and API errors so a cloud outage never crashes the API
         try:
             errors = self._client.insert_rows_json(self._table, [row])
             if errors:
                 msg = f"BigQuery row rejected: {errors}"
-                print(f"[AuraSense | BigQuery] WARNING — {msg}")
+                log.warning("%s", msg)
                 return False, msg
                 
             return True, "ok"
 
         except (GoogleAPIError, RetryError, ProtocolError, ConnectionError) as exc:
             msg = f"Network or API Error while reaching Google Cloud: {type(exc).__name__}"
-            print(f"[AuraSense | BigQuery] ERROR — {msg}")
+            log.error("%s", msg)
             # We return False safely so the Flask route can handle it gracefully 
             # without crashing the whole application thread.
             return False, msg
             
         except Exception as exc:
             msg = f"Unexpected Error during BigQuery insert: {exc}"
-            print(f"[AuraSense | BigQuery] FATAL — {msg}")
+            log.exception("%s", msg)
             return False, msg
 
     # ── Read ──────────────────────────────────────────────────────────────────
@@ -94,7 +106,7 @@ class BigQueryService:
                 return None
             return dict(rows[0])
         except Exception as exc:
-            print(f"[AuraSense | BigQuery] Query Error (get_latest): {exc}")
+            log.error("Query error (get_latest): %s", exc)
             return None
 
     def get_history(self, hours: int = 24) -> list[dict]:
@@ -102,13 +114,14 @@ class BigQueryService:
         query = f"""
             SELECT *
             FROM `{self._table}`
-            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
+            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @hours HOUR)
             ORDER BY timestamp DESC
         """
+        params = [bigquery.ScalarQueryParameter("hours", "INT64", _clamp(hours, 1, MAX_HOURS))]
         try:
-            return [dict(r) for r in self._client.query(query).result()]
+            return self._run(query, params)
         except Exception as exc:
-            print(f"[AuraSense | BigQuery] Query Error (get_history): {exc}")
+            log.error("Query error (get_history): %s", exc)
             return []
 
     def get_recent_summary(self, hours: int = 24) -> str:
@@ -150,12 +163,20 @@ class BigQueryService:
                 ROUND(AVG(humidity),    2) AS avg_hum,
                 ROUND(AVG(eco2),        0) AS avg_eco2
             FROM `{self._table}`
-            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+            WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
             GROUP BY day
             ORDER BY day DESC
         """
+        params = [bigquery.ScalarQueryParameter("days", "INT64", _clamp(days, 1, MAX_DAYS))]
         try:
-            return [dict(r) for r in self._client.query(query).result()]
+            return self._run(query, params)
         except Exception as exc:
-            print(f"[AuraSense | BigQuery] Query Error (get_daily_aggregates): {exc}")
+            log.error("Query error (get_daily_aggregates): %s", exc)
             return []
+
+    # ── Internal ──────────────────────────────────────────────────────────────
+
+    def _run(self, query: str, params: list) -> list[dict]:
+        """Execute a parameterised query and return rows as dictionaries."""
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+        return [dict(r) for r in self._client.query(query, job_config=job_config).result()]

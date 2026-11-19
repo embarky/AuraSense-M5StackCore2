@@ -1,19 +1,21 @@
 # requirements.txt — AuraSense Dashboard Dependencies
 # "AuraSense: See the air you breathe."
+#
+# Versions are pinned for reproducible builds.
 
-# Dashboard Framework
-streamlit>=1.30.0
+# Dashboard framework
+streamlit==1.67.0
 
-# Data Visualization
-plotly>=5.15.0
+# Data visualisation
+plotly==7.1.0
 
-# Data Processing
-pandas>=2.0.0
-db-dtypes>=1.0.0
+# Data processing
+pandas==3.1.1
+db-dtypes==1.9.0
 
 # Google Cloud
-google-cloud-bigquery>=3.0.0
+google-cloud-bigquery==3.47.0
 
-# Networking & Utilities
-requests>=2.31.0
-python-dotenv>=1.0.0
+# Networking & utilities
+requests==2.34.2
+python-dotenv==1.2.4

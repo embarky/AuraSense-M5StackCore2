@@ -1,25 +1,27 @@
 # requirements.txt — AuraSense Backend Dependencies
 # "AuraSense: See the air you breathe."
+#
+# Versions are pinned for reproducible builds. Upgrade deliberately:
+# bump a version, rebuild, and re-run the test suite.
 
-# Web Framework & Production Server
-flask>=3.0.0
-gunicorn>=21.0.0
+# Web framework & production server
+flask==3.1.3
+gunicorn==27.0.1
 
-# Google Cloud & AI Integrations
-google-genai>=1.0.0
-google-cloud-bigquery>=3.0.0
-google-api-core>=2.0.0
-db-dtypes>=1.0.0
+# Google Cloud & AI integrations
+google-genai==3.6.1
+google-cloud-bigquery==3.47.0
+google-api-core==2.44.0
+db-dtypes==1.9.0
 
-# Audio Synthesis & Processing
-# Note: ffmpeg must be installed on the system for pydub to function
-edge-tts>=7.0.0
-pydub>=0.25.0
+# Audio synthesis & processing (pydub needs the ffmpeg system package)
+edge-tts==7.3.1
+pydub==0.25.1
 
-# Data Processing
-pandas>=2.0.0
+# Data processing
+pandas==3.1.1
 
-# Networking & Utilities
-requests>=2.31.0
-urllib3>=2.0.0
-python-dotenv>=1.0.0
+# Networking & utilities
+requests==2.34.2
+urllib3==2.8.0
+python-dotenv==1.2.4
