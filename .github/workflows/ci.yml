@@ -40,11 +40,15 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # 3.11 = Docker image; 3.13 = newest Python without the audioop module
+        python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r backend/requirements.txt pytest==9.2.0

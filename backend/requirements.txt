@@ -17,6 +17,8 @@ db-dtypes==1.9.0
 # Audio synthesis & processing (pydub needs the ffmpeg system package)
 edge-tts==7.3.1
 pydub==0.25.1
+# Python 3.13 removed the audioop module that pydub needs; this restores it
+audioop-lts==0.2.2; python_version >= "3.13"
 
 # Data processing
 pandas==3.1.1

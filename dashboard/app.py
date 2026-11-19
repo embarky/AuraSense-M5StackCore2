@@ -13,6 +13,7 @@ from data import (
     API_KEY, FLASK_URL, get_current_status, get_last_known_context, get_history, 
     get_daily_aggregates, get_motion_heatmap, get_anomalies, get_anomalies_by_dates, THRESH
 )
+from indicators import pressure_trend
 from charts import (
     temp_humidity_chart, co2_tvoc_chart, daily_temp_chart, motion_heatmap_chart
 )
@@ -162,7 +163,7 @@ def render_live_dashboard():
         if is_online and not df_sparklines.empty and "pressure" in df_sparklines:
             sparkline(df_sparklines["pressure"].dropna().tail(60), "#6366F1")
         if not is_online: st.caption("Sensor offline")
-        elif press is not None: st.caption("🟢 Stable" if 970 < press < 1050 else "🟡 Unusual")
+        elif press is not None: st.caption(pressure_trend(df_sparklines))
 
     with r2c3:
         motion = (current_metrics.get("motion") if is_online else None)
