@@ -1,0 +1,20 @@
+# Tooling configuration (the services themselves are installed from their
+# own requirements.txt files and run in separate containers).
+
+[tool.pytest.ini_options]
+# Each component is tested in its own environment, e.g.
+#   pytest tests/backend
+#   pytest tests/dashboard tests/simulator
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+# Firmware: `from M5 import *` is the documented UIFlow style; unused imports
+# are left alone so the firmware stays byte-identical to the hardware-tested code
+"device/**" = ["F401", "F403", "F405"]
