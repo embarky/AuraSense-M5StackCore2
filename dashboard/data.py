@@ -5,14 +5,18 @@ dashboard/data.py — Data fetching layer for AuraSense.
 from __future__ import annotations
 
 import os
-import requests
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pandas as pd
+import requests
 from google.cloud import bigquery
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
 FLASK_URL   = os.getenv("FLASK_URL", "http://localhost:5001")
-GCP_PROJECT = os.getenv("GCP_PROJECT", "caa-project-493719")
+API_KEY     = os.getenv("AURASENSE_API_KEY", "")
+GCP_PROJECT = os.getenv("GCP_PROJECT", "")
 BQ_DATASET  = os.getenv("BQ_DATASET", "iot_data")
 BQ_TABLE    = os.getenv("BQ_TABLE",   "sensor_logs")
 TABLE_ID    = f"{GCP_PROJECT}.{BQ_DATASET}.{BQ_TABLE}"
@@ -40,12 +44,33 @@ def _bq() -> bigquery.Client:
     return _bq_client
 
 
+def _run(query: str, **params) -> pd.DataFrame:
+    """
+    Run a parameterised BigQuery query and return a DataFrame.
+
+    Values are sent as query parameters (never formatted into the SQL text);
+    integers become INT64 and datetimes become TIMESTAMP parameters.
+    """
+    query_params = []
+    for name, value in params.items():
+        if isinstance(value, datetime):
+            query_params.append(bigquery.ScalarQueryParameter(name, "TIMESTAMP", value))
+        else:
+            query_params.append(bigquery.ScalarQueryParameter(name, "INT64", int(value)))
+    job_config = bigquery.QueryJobConfig(query_parameters=query_params)
+    return _bq().query(query, job_config=job_config).to_dataframe()
+
+
 # ── Real-time & Context Status ────────────────────────────────────────────────
 
 def get_current_status() -> dict:
     """Fetch latest sensor snapshot from Flask backend safely."""
     try:
-        r = requests.get(f"{FLASK_URL}/api/current_status", timeout=3)
+        r = requests.get(
+            f"{FLASK_URL}/api/current_status",
+            headers={"X-API-Key": API_KEY},
+            timeout=3,
+        )
         if r.status_code == 200:
             return r.json()
     except requests.exceptions.RequestException as e:
@@ -69,7 +94,7 @@ def get_last_known_context() -> dict:
         LIMIT 1
     """
     try:
-        df = _bq().query(query).to_dataframe()
+        df = _run(query)
         if not df.empty:
             row = df.iloc[0]
             return {
@@ -99,12 +124,12 @@ def get_history(hours: int = 24) -> pd.DataFrame:
             AVG(pressure)        AS pressure,
             MAX(CAST(motion_detected AS INT64)) AS motion_detected
         FROM `{TABLE_ID}`
-        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @hours HOUR)
         GROUP BY 1
         ORDER BY 1
     """
     try:
-        df = _bq().query(query).to_dataframe()
+        df = _run(query, hours=hours)
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         return df
     except Exception as e:
@@ -126,12 +151,12 @@ def get_daily_aggregates(days: int = 7) -> pd.DataFrame:
             ROUND(AVG(eco2), 0)         AS eco2_avg,
             ROUND(MAX(eco2), 0)         AS eco2_max
         FROM `{TABLE_ID}`
-        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
         GROUP BY 1
         ORDER BY 1
     """
     try:
-        df = _bq().query(query).to_dataframe()
+        df = _run(query, days=days)
         if 'date' in df.columns:
             df["date"] = pd.to_datetime(df["date"])
         return df
@@ -148,12 +173,12 @@ def get_motion_heatmap(days: int = 7) -> pd.DataFrame:
             EXTRACT(HOUR FROM DATETIME(timestamp, 'Europe/Zurich')) AS hour,
             SUM(CASE WHEN CAST(motion_detected AS STRING) IN ('true','True','1') THEN 1 ELSE 0 END) AS motion_count
         FROM `{TABLE_ID}`
-        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
         GROUP BY 1, 2
         ORDER BY 2
     """
     try:
-        return _bq().query(query).to_dataframe()
+        return _run(query, days=days)
     except Exception as e:
         print(f"[AuraSense | Data] get_motion_heatmap error: {e}")
         return pd.DataFrame()
@@ -166,7 +191,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
     query = f"""
         SELECT timestamp, eco2, tvoc, humidity
         FROM `{TABLE_ID}`
-        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
           AND timezone = 'Europe/Zurich'
           AND (
             eco2     > {THRESH["eco2_warning"]}
@@ -178,7 +203,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
         LIMIT 200
     """
     try:
-        df = _bq().query(query).to_dataframe()
+        df = _run(query, days=days)
         if df.empty:
             return df
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
@@ -220,14 +245,17 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
 
 def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
     """Fetch anomalies between two specific exact datetimes (down to the second)."""
-    start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
-    end_str   = end_dt.strftime("%Y-%m-%d %H:%M:%S")
-    
+    # The UI picks wall-clock times in Zurich; make them timezone-aware so that
+    # BigQuery does not interpret them as UTC (which shifted the window by 1-2 h).
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=ZoneInfo("Europe/Zurich"))
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=ZoneInfo("Europe/Zurich"))
     query = f"""
         SELECT timestamp, eco2, tvoc, humidity
         FROM `{TABLE_ID}`
-        WHERE timestamp >= TIMESTAMP('{start_str}')
-          AND timestamp <= TIMESTAMP('{end_str}')
+        WHERE timestamp >= @start_ts
+          AND timestamp <= @end_ts
           AND timezone = 'Europe/Zurich'
           AND (
             eco2     > {THRESH["eco2_warning"]}
@@ -239,7 +267,7 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
         LIMIT 500
     """
     try:
-        df = _bq().query(query).to_dataframe()
+        df = _run(query, start_ts=start_dt, end_ts=end_dt)
         if df.empty: return df
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
@@ -281,17 +309,17 @@ def get_co2_peak_stats(hours: int = 24) -> dict:
             AVG(eco2)            AS avg,
             TIMESTAMP_TRUNC(
                 (SELECT timestamp FROM `{TABLE_ID}`
-                 WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
+                 WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @hours HOUR)
                  ORDER BY eco2 DESC LIMIT 1),
                 MINUTE
             )                    AS peak_time,
             COUNTIF(eco2 > {THRESH["eco2_warning"]}) AS mins_above_800,
             COUNTIF(eco2 > {THRESH["eco2_danger"]})  AS mins_above_1500
         FROM `{TABLE_ID}`
-        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {hours} HOUR)
+        WHERE timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @hours HOUR)
     """
     try:
-        df = _bq().query(query).to_dataframe()
+        df = _run(query, hours=hours)
         if df.empty:
             return {"peak": 0, "avg": 0, "peak_time": None, "mins_above_800": 0, "mins_above_1500": 0}
             
