@@ -22,6 +22,17 @@ import config
 _consecutive_upload_fails = 0
 
 
+def _headers(content_type=None):
+    """Authentication headers sent with every backend request."""
+    headers = {
+        "X-API-Key":   getattr(config, "API_KEY", ""),
+        "X-Device-Id": getattr(config, "DEVICE_ID", "core2-01"),
+    }
+    if content_type:
+        headers["Content-Type"] = content_type
+    return headers
+
+
 # ── WiFi ──────────────────────────────────────────────────────────────────────
 
 def wifi_connect(status_cb=None) -> bool:
@@ -101,11 +112,9 @@ def upload_sensor_data(sensor_data: dict):
     
     try:
         payload = json.dumps(clean)
-        headers = {
-            "Content-Type":   "application/json",
-            "Connection":     "close",
-            "Content-Length": str(len(payload)),
-        }
+        headers = _headers("application/json")
+        headers["Connection"]     = "close"
+        headers["Content-Length"] = str(len(payload))
         resp = requests.post(config.SENSOR_URL, data=payload, headers=headers, timeout=3)
         
         if resp.status_code == 200:
@@ -255,7 +264,7 @@ def upload_voice_and_receive(rec_path: str):
         print("[AuraSense | Voice] Uploading %d bytes" % len(wav))
         
         resp = requests.post(config.VOICE_URL, data=wav,
-                             headers={"Content-Type": "audio/wav"}, timeout=50)
+                             headers=_headers("audio/wav"), timeout=50)
                              
         if resp.status_code == 204:
             return None
@@ -309,7 +318,7 @@ def fetch_forecast():
 
     resp = None
     try:
-        resp = requests.get(config.WEATHER_URL, timeout=3)
+        resp = requests.get(config.WEATHER_URL, headers=_headers(), timeout=3)
         
         if resp.status_code == 200:
             result = resp.json()
@@ -350,7 +359,7 @@ def speak_announcement(sensor_data: dict, outdoor: dict, forecast: list):
         })
         url = "http://{}:{}/speak".format(config.SERVER_HOST, config.SERVER_PORT)
         resp = requests.post(url, data=payload,
-                             headers={"Content-Type": "application/json"}, timeout=10)
+                             headers=_headers("application/json"), timeout=10)
                              
         if resp.status_code == 200:
             audio = resp.content
@@ -385,7 +394,7 @@ def speak_alert(sensor_data: dict, anomaly_type: str):
         })
         url = "http://{}:{}/alert".format(config.SERVER_HOST, config.SERVER_PORT)
         resp = requests.post(url, data=payload,
-                             headers={"Content-Type": "application/json"}, timeout=10)
+                             headers=_headers("application/json"), timeout=10)
                              
         if resp.status_code == 200:
             audio = resp.content

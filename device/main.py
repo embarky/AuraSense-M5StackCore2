@@ -64,6 +64,10 @@ _last_forecast = 0
 _prev_flask_ok = False
 _last_gc       = 0
 
+# Offset from UTC in seconds. Starts from the configured fallback and is
+# replaced by the DST-aware value the backend returns with every upload.
+_utc_offset    = getattr(config, "UTC_OFFSET_S", 3600)
+
 # Motion / screen state
 _last_motion_ms     = 0
 _last_announce_hour = -1  # Tracks the last hour an announcement was made
@@ -86,9 +90,13 @@ def _safe_update_outdoor(new_data: dict) -> bool:
     Safely updates the global _outdoor state. 
     Prevents location amnesia if the backend omits the 'location' key.
     """
-    global _outdoor, _flask_ok
+    global _outdoor, _flask_ok, _utc_offset
     if not new_data:
         return False
+
+    offset = new_data.get("utc_offset")
+    if isinstance(offset, int) and -14 * 3600 <= offset <= 14 * 3600:
+        _utc_offset = offset
         
     old_loc = _outdoor.get("location")
     _outdoor = new_data
@@ -104,18 +112,20 @@ _DAYS   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 _MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
            "Jul","Aug","Sep","Oct","Nov","Dec"]
 
+def _local_time():
+    """Local wall-clock time tuple (UTC from NTP + backend-provided offset)."""
+    return time.localtime(time.time() + _utc_offset)
+
 def _time_str():
     try:
-        local_sec = time.time() + (2 * 3600)
-        t = time.localtime(local_sec)
+        t = _local_time()
         return "{:02d}:{:02d}".format(t[3], t[4])
     except Exception:
         return "--:--"
 
 def _date_str():
     try:
-        local_sec = time.time() + (2 * 3600)
-        t = time.localtime(local_sec)
+        t = _local_time()
         return "{}  {:02d} {}".format(
             _DAYS[t[6]].upper(), t[2], _MONTHS[t[1] - 1].upper()
         )
@@ -249,8 +259,7 @@ def _handle_announce(now_ms):
         
     try:
         # Get real local time (matches display time logic)
-        local_sec = time.time() + (2 * 3600) 
-        t = time.localtime(local_sec)
+        t = _local_time()
         current_hour = t[3]
         current_minute = t[4]
 
