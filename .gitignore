@@ -1,28 +1,30 @@
-# --- Python Environment ---
+# --- Secrets & local configuration (never commit) ---
+.env
+backend/config.json
+device/config.py
+# GCP service-account keys and other credential files
+*credentials*.json
+*service-account*.json
+*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].json
+key.json
+secrets/
+
+# --- Python ---
 .venv/
 venv/
 ENV/
 __pycache__/
 *.py[cod]
-*$py.class
+.pytest_cache/
+.ruff_cache/
 
-# --- Sensitive Information & Credentials (CRITICAL!) ---
-.env
-*.json
-!config-example.json
-# Note: The !config-example.json exception above is to keep your M5Stack configuration tracked.
-# However, if you are using real Service Account Keys (JSON) for GCP deployment,
-# you MUST ensure those specific key files are explicitly excluded, for example:
-*credentials*.json
-key.json
-
-# --- OS Generated Temporary Files ---
+# --- OS ---
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 
-# --- IDE / Editor Configurations ---
+# --- IDE / editors ---
 .vscode/
 .idea/

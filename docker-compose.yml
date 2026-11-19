@@ -1,5 +1,9 @@
-# docker-compose.yml — AuraSense Full Stack
+# docker-compose.yml — AuraSense full stack
 # "AuraSense: See the air you breathe."
+#
+# Configuration comes from a .env file next to this one (copy .env.example).
+# Secrets are mounted read-only from paths you choose; nothing project-specific
+# is hard-coded here.
 
 services:
   backend:
@@ -9,10 +13,12 @@ services:
     ports:
       - "5001:5001"
     volumes:
-      - "./backend/caa-project-493719-0326a6be8e90.json:/app/credentials.json:ro"
-      - "./backend/config.json:/app/config.json:ro"
+      - "${GCP_CREDENTIALS_PATH:?Set GCP_CREDENTIALS_PATH in .env}:/app/credentials.json:ro"
+      - "${BACKEND_CONFIG_PATH:-./backend/config.json}:/app/config.json:ro"
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     restart: unless-stopped
 
   dashboard:
@@ -23,12 +29,13 @@ services:
       - "8501:8501"
     environment:
       FLASK_URL: http://backend:5001
-      GCP_PROJECT: caa-project-493719
-      BQ_DATASET: iot_data
-      BQ_TABLE: sensor_logs
+      AURASENSE_API_KEY: ${AURASENSE_API_KEY:-}
+      GCP_PROJECT: ${GCP_PROJECT:?Set GCP_PROJECT in .env}
+      BQ_DATASET: ${BQ_DATASET:-iot_data}
+      BQ_TABLE: ${BQ_TABLE:-sensor_logs}
       GOOGLE_APPLICATION_CREDENTIALS: /app/credentials.json
     volumes:
-      - "./dashboard/caa-project-493719-0326a6be8e90.json:/app/credentials.json:ro"
+      - "${GCP_CREDENTIALS_PATH:?Set GCP_CREDENTIALS_PATH in .env}:/app/credentials.json:ro"
     depends_on:
       - backend
     restart: unless-stopped
