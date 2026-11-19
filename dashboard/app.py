@@ -10,7 +10,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from data import (
-    FLASK_URL, get_current_status, get_last_known_context, get_history, 
+    API_KEY, FLASK_URL, get_current_status, get_last_known_context, get_history, 
     get_daily_aggregates, get_motion_heatmap, get_anomalies, get_anomalies_by_dates, THRESH
 )
 from charts import (
@@ -23,7 +23,7 @@ from charts import (
 def fetch_flask_forecast():
     """Call the backend Forecast API to retrieve weather data"""
     try:
-        r = requests.get(f"{FLASK_URL}/api/forecast", timeout=3)
+        r = requests.get(f"{FLASK_URL}/api/forecast", headers={"X-API-Key": API_KEY}, timeout=3)
         if r.status_code == 200:
             res = r.json()
             if res.get("status") == "success":

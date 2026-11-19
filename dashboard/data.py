@@ -1,6 +1,14 @@
 """
 dashboard/data.py — Data fetching layer for AuraSense.
 "AuraSense: See the air you breathe."
+
+Live values come from the backend API. Historical views come from one of two
+sources, chosen with DATA_SOURCE:
+
+* "bigquery" — the cloud deployment (queries below)
+* "sqlite"   — the local demo (sqlite_source.py, same columns)
+
+Defaults to BigQuery when GCP_PROJECT is set, otherwise SQLite.
 """
 from __future__ import annotations
 
@@ -12,26 +20,18 @@ import pandas as pd
 import requests
 from google.cloud import bigquery
 
+from anomalies import THRESH, classify_anomalies
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 FLASK_URL   = os.getenv("FLASK_URL", "http://localhost:5001")
 API_KEY     = os.getenv("AURASENSE_API_KEY", "")
 GCP_PROJECT = os.getenv("GCP_PROJECT", "")
+DATA_SOURCE = os.getenv("DATA_SOURCE", "bigquery" if GCP_PROJECT else "sqlite")
 BQ_DATASET  = os.getenv("BQ_DATASET", "iot_data")
 BQ_TABLE    = os.getenv("BQ_TABLE",   "sensor_logs")
 TABLE_ID    = f"{GCP_PROJECT}.{BQ_DATASET}.{BQ_TABLE}"
 
-# Anomaly thresholds
-THRESH = {
-    "eco2_danger":    1500,
-    "eco2_warning":   800,
-    "tvoc_danger":    660,
-    "tvoc_warning":   220,
-    "hum_low_danger": 20,
-    "hum_low_warn":   30,
-    "hum_high_danger":75,
-    "hum_high_warn":  65,
-}
 
 # ── BigQuery client (cached) ──────────────────────────────────────────────────
 
@@ -208,35 +208,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
             return df
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
-        rows = []
-        for _, r in df.iterrows():
-            if r["eco2"] > THRESH["eco2_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "CO2 danger", "level": "danger", "value": f"{int(r['eco2'])} ppm"})
-            elif r["eco2"] > THRESH["eco2_warning"]:
-                rows.append({"timestamp": r["timestamp"], "type": "CO2 warning", "level": "warning", "value": f"{int(r['eco2'])} ppm"})
-            
-            if r["tvoc"] > THRESH["tvoc_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "TVOC danger", "level": "danger", "value": f"{int(r['tvoc'])} ppb"})
-            elif r["tvoc"] > THRESH["tvoc_warning"]:
-                rows.append({"timestamp": r["timestamp"], "type": "TVOC warning", "level": "warning", "value": f"{int(r['tvoc'])} ppb"})
-                
-            if r["humidity"] < THRESH["hum_low_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity low", "level": "danger", "value": f"{int(r['humidity'])}%"})
-            elif r["humidity"] < THRESH["hum_low_warn"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity low", "level": "warning", "value": f"{int(r['humidity'])}%"})
-                
-            if r["humidity"] > THRESH["hum_high_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity high", "level": "danger", "value": f"{int(r['humidity'])}%"})
-            elif r["humidity"] > THRESH["hum_high_warn"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity high", "level": "warning", "value": f"{int(r['humidity'])}%"})
-
-        result = pd.DataFrame(rows)
-        if not result.empty:
-            # Sort by timestamp desc, danger before warning for same timestamp
-            result["_level_order"] = result["level"].map({"danger": 0, "warning": 1})
-            result = result.sort_values(["timestamp", "_level_order"], ascending=[False, True])
-            result = result.drop(columns=["_level_order"]).reset_index(drop=True)
-        return result
+        return classify_anomalies(df)
 
     except Exception as e:
         print(f"[AuraSense | Data] get_anomalies error: {e}")
@@ -271,31 +243,7 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
         if df.empty: return df
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
-        rows = []
-        for _, r in df.iterrows():
-            if r["eco2"] > THRESH["eco2_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "CO2 danger", "level": "danger", "value": f"{int(r['eco2'])} ppm"})
-            elif r["eco2"] > THRESH["eco2_warning"]:
-                rows.append({"timestamp": r["timestamp"], "type": "CO2 warning", "level": "warning", "value": f"{int(r['eco2'])} ppm"})
-            if r["tvoc"] > THRESH["tvoc_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "TVOC danger", "level": "danger", "value": f"{int(r['tvoc'])} ppb"})
-            elif r["tvoc"] > THRESH["tvoc_warning"]:
-                rows.append({"timestamp": r["timestamp"], "type": "TVOC warning", "level": "warning", "value": f"{int(r['tvoc'])} ppb"})
-            if r["humidity"] < THRESH["hum_low_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity low", "level": "danger", "value": f"{int(r['humidity'])}%"})
-            elif r["humidity"] < THRESH["hum_low_warn"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity low", "level": "warning", "value": f"{int(r['humidity'])}%"})
-            if r["humidity"] > THRESH["hum_high_danger"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity high", "level": "danger", "value": f"{int(r['humidity'])}%"})
-            elif r["humidity"] > THRESH["hum_high_warn"]:
-                rows.append({"timestamp": r["timestamp"], "type": "Humidity high", "level": "warning", "value": f"{int(r['humidity'])}%"})
-
-        result = pd.DataFrame(rows)
-        if not result.empty:
-            result["_level_order"] = result["level"].map({"danger": 0, "warning": 1})
-            result = result.sort_values(["timestamp", "_level_order"], ascending=[False, True])
-            result = result.drop(columns=["_level_order"]).reset_index(drop=True)
-        return result
+        return classify_anomalies(df)
     except Exception as e:
         print(f"[AuraSense | Data] get_anomalies_by_dates error: {e}")
         return pd.DataFrame()
@@ -334,3 +282,17 @@ def get_co2_peak_stats(hours: int = 24) -> dict:
     except Exception as e:
         print(f"[AuraSense | Data] get_co2_peak_stats error: {e}")
         return {"peak": 0, "avg": 0, "peak_time": None, "mins_above_800": 0, "mins_above_1500": 0}
+
+
+# ── Local demo: replace the BigQuery views with the SQLite implementations ────
+
+if DATA_SOURCE == "sqlite":
+    import sqlite_source as _local  # noqa: E402
+
+    get_last_known_context = _local.get_last_known_context
+    get_history            = _local.get_history
+    get_daily_aggregates   = _local.get_daily_aggregates
+    get_motion_heatmap     = _local.get_motion_heatmap
+    get_anomalies          = _local.get_anomalies
+    get_anomalies_by_dates = _local.get_anomalies_by_dates
+    get_co2_peak_stats     = _local.get_co2_peak_stats
