@@ -9,12 +9,13 @@
 **See the air you breathe.** An end-to-end IoT system that measures indoor air quality on an ESP32 device, raises light and voice alerts when the air gets bad, answers spoken questions with an LLM, and keeps the history in the cloud for a web dashboard.
 
 <p align="center">
-  <img src="assets/demo-alert.webp" width="480" alt="The device detects a gas source: eCO2 jumps above 3,000 ppm, the reading turns red and the LED bar flashes red">
-  <br><sub>Real device: a gas source near the sensor pushes eCO₂ above 3,000 ppm; the reading turns red and the LED bar flashes.</sub>
+  <a href="https://youtu.be/Kg4_3pkiIR8"><img src="assets/product-video-thumbnail.jpg" width="720" alt="Watch the 70-second AuraSense product video on YouTube"></a>
+  <br><sub><b>▶ Watch the 70-second product video</b> — real device, real voice alerts and assistant answers, English subtitles.</sub>
 </p>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=83zbSBvbl1c"><b>▶ Demo video</b></a> ·
+  <a href="https://youtu.be/Kg4_3pkiIR8"><b>▶ Product video</b></a> ·
+  <a href="https://www.youtube.com/watch?v=83zbSBvbl1c">Course demo (7 min)</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/design.md">Design document</a> ·
   <a href="docs/user-manual.pdf">User manual</a>
@@ -31,6 +32,11 @@
 - **Tested down to the firmware** — 77 automated tests, including firmware tests executed on the MicroPython interpreter; CI builds the images and checks the full demo on every push.
 
 ## The device
+
+<p align="center">
+  <img src="assets/demo-alert.webp" width="480" alt="The device detects a gas source: eCO2 jumps above 3,000 ppm, the reading turns red and the LED bar flashes red">
+  <br><sub>A gas source near the sensor pushes eCO₂ above 3,000 ppm; the reading turns red and the LED bar flashes.</sub>
+</p>
 
 <p align="center"><img src="assets/device-screens.jpg" width="900" alt="Six device screens: home, sensor diagnostics, 5-day forecast, danger alert, offline mode, WiFi setup"></p>
 

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- 70-second product video on YouTube, linked at the top of the README
+
 ### Fixed
 - Air-pressure card labelled normal readings at Lausanne's altitude as "Unusual"; it now shows the 3-hour trend
 - Edge TTS provider failed on Python 3.13 (audioop removed); backend tests now run on 3.11 and 3.13
