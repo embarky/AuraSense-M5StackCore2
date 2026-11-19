@@ -1,6 +1,7 @@
 # AuraSense 🌬️
 > *See the air you breathe. An end-to-end IoT indoor air quality monitoring and AI advice system.*
 
+[![CI](https://github.com/embarky/AuraSense-M5StackCore2/actions/workflows/ci.yml/badge.svg)](https://github.com/embarky/AuraSense-M5StackCore2/actions/workflows/ci.yml)
 [![Firmware](https://img.shields.io/badge/Firmware-UIFlow2.0_V2.4.4--CORE2-00BFFF.svg)](https://m5stack.com/)
 [![Runtime](https://img.shields.io/badge/Runtime-MicroPython-yellow.svg)](https://micropython.org/)
 [![Backend](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
@@ -169,6 +170,27 @@ Each provider can also be switched individually (for example `AI_PROVIDER=gemini
 4. Set the device to run `main.py` on startup via M5Burner
 
 > **Security:** every API endpoint except `GET /health` requires the `X-API-Key` header. `config.py`, `config.json`, `.env` and key files are gitignored and excluded from Docker images; install the [gitleaks](https://github.com/gitleaks/gitleaks) pre-commit hook with `pip install pre-commit && pre-commit install`.
+
+---
+
+## Development & Testing
+
+Each component is tested in its own environment, the same way CI runs it:
+
+```bash
+pip install -r backend/requirements.txt pytest && pytest tests/backend
+pip install -r dashboard/requirements.txt pytest && pytest tests/dashboard tests/simulator
+tests/device/run_device_tests.sh        # needs micropython + mpy-cross
+```
+
+| Suite | What it covers |
+|-------|----------------|
+| `tests/backend` | API authentication and rate limiting, ingestion and batch validation, query bounds, per-device voice history, SQLite storage, provider selection |
+| `tests/dashboard` | Anomaly rules and every dashboard view on a database filled by the simulator |
+| `tests/simulator` | Physical plausibility, occupancy patterns, scenarios, determinism |
+| `tests/device` | Firmware compiled with the MicroPython compiler and executed on MicroPython with the M5Stack hardware modules stubbed out |
+
+[GitHub Actions](.github/workflows/ci.yml) runs all suites, ruff and a gitleaks secret scan on every push, then builds the Docker images and checks that `docker compose up` delivers simulated data to the dashboard.
 
 ---
 
