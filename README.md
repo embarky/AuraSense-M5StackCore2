@@ -9,7 +9,7 @@
 **See the air you breathe.** An end-to-end IoT system that measures indoor air quality on an ESP32 device, raises light and voice alerts when the air gets bad, answers spoken questions with an LLM, and keeps the history in the cloud for a web dashboard.
 
 <p align="center">
-  <img src="assets/demo-alert.gif" width="440" alt="The device detects a gas source: eCO2 jumps above 3,000 ppm, the reading turns red and the LED bar flashes red">
+  <img src="assets/demo-alert.webp" width="480" alt="The device detects a gas source: eCO2 jumps above 3,000 ppm, the reading turns red and the LED bar flashes red">
   <br><sub>Real device: a gas source near the sensor pushes eCO₂ above 3,000 ppm; the reading turns red and the LED bar flashes.</sub>
 </p>
 
@@ -36,12 +36,12 @@
 
 | Voice assistant | WiFi setup from a phone |
 |:---:|:---:|
-| <img src="assets/demo-voice.gif" width="300" alt="Holding button C records a question; the device uploads it and plays the answer"> | <img src="assets/demo-wifi-setup.gif" width="460" alt="Scanning the QR code, entering WiFi credentials on the phone, device reconnects"> |
+| <img src="assets/demo-voice.webp" width="320" alt="Holding button C records a question; the device uploads it and plays the answer"> | <img src="assets/demo-wifi-setup.webp" width="440" alt="Scanning the QR code, entering WiFi credentials on the phone, device reconnects"> |
 | Hold **C** to record → *Uploading…* → *Playing…* (sound in the video) | Scan the QR code, enter credentials, the device restarts and connects |
 
 ## The dashboard
 
-<p align="center"><img src="assets/dashboard-live.gif" width="800" alt="Streamlit dashboard of the deployed system with trends, daily extremes and a motion heatmap"></p>
+<p align="center"><img src="assets/dashboard-live.webp" width="860" alt="Streamlit dashboard of the deployed system with trends, daily extremes and a motion heatmap"></p>
 <p align="center"><sub>The deployed dashboard during the course (May 2026), showing a week of real readings.</sub></p>
 
 ## Architecture
@@ -110,10 +110,7 @@ Step-by-step instructions, routine tasks and a decommissioning checklist: [docs/
 
 ## Hardware
 
-<table>
-<tr>
-<td width="44%"><img src="assets/hardware.jpg" alt="Real photo of the M5Stack Core2 with the SGP30, ENV III and PIR sensor units"></td>
-<td>
+<p align="center"><img src="assets/hardware.jpg" width="900" alt="AuraSense hardware: M5Stack Core2 with SGP30, AS312 PIR and ENV III sensor units"></p>
 
 | Port | Unit | Measures |
 |------|------|----------|
@@ -125,13 +122,10 @@ Step-by-step instructions, routine tasks and a decommissioning checklist: [docs/
 
 | Alert | eCO₂ | TVOC | Humidity | LEDs |
 |---|---|---|---|---|
-| Warning | > 800 ppm | > 220 ppb | < 30 % / > 65 % | yellow |
-| Danger | > 1500 ppm | > 660 ppb | < 20 % / > 75 % | red + voice |
+| Warning | > 800 ppm | > 220 ppb | < 30 % or > 65 % | yellow, 500 ms flash |
+| Danger | > 1500 ppm | > 660 ppb | < 20 % or > 75 % | red, 250 ms flash + voice |
 
-Screen dims after 60 s and turns off after 120 s without motion; uploads every 30 s, every 5 s during an alert.
-</td>
-</tr>
-</table>
+The screen dims after 60 s and turns off after 120 s without motion. Readings are uploaded every 30 s, every 5 s during an alert.
 
 ## Engineering challenges
 
@@ -191,7 +185,13 @@ See [CHANGELOG.md](CHANGELOG.md). Known limitations, such as eCO₂ being an est
 | **Hang Yang** | v1: device firmware (sensors, LED alerts, screen management, voice assistant, WiFi resilience), Flask backend (API, Gemini, TTS, BigQuery, weather), Docker deployment on GCP. v2: all post-course changes listed above. |
 | **Yi Huang** | v1: Streamlit dashboard (real-time overview, sparklines, outdoor weather card, anomaly log, trend analysis, historical insights, AI advice, online/offline detection). |
 
-Built for *Cloud and Advanced Analytics*, University of Lausanne, 2026. v2 was developed with AI pair-programming assistance (Claude); see the commit trailers.
+Built for *Cloud and Advanced Analytics*, University of Lausanne, 2026.
+
+## Acknowledgements
+
+- Hardware provided by the course *Cloud and Advanced Analytics*, University of Lausanne.
+- Built on [UIFlow 2](https://uiflow2.m5stack.com/) and the M5Stack unit drivers, [Flask](https://flask.palletsprojects.com/), [Streamlit](https://streamlit.io/), [edge-tts](https://github.com/rany2/edge-tts), [OpenWeatherMap](https://openweathermap.org/) and [ip-api](https://ip-api.com/).
+- **AI assistance:** AI coding assistants were used during development — in v1 to help refactor the device and backend code, and in v2 as a pair programmer (Claude) for the security fixes, local demo, tests and documentation. Commits written with AI assistance carry a `Co-Authored-By` trailer.
 
 ## License
 
