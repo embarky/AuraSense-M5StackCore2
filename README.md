@@ -105,11 +105,15 @@ python simulator/aurasense_sim.py export --days 7 --out readings.csv
 | Speech | Chime | Edge TTS |
 </details>
 
+### Running on the real device
+
+The device works with the local Docker stack too, with no cloud account needed. [docs/device-setup.md](docs/device-setup.md) covers flashing UIFlow 2, configuring `config.py`, uploading the firmware and troubleshooting.
+
 ### Cloud deployment with the real device
 
 1. Copy `.env.example` to `.env` and fill in the "Cloud deployment" values (API key, GCP project and service-account key, Gemini and OpenWeatherMap keys).
 2. `docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build`, behind an HTTPS reverse proxy for public access.
-3. Flash **UIFlow 2.0 v2.4.4** on the Core2, copy `device/config.example.py` to `device/config.py` with the server address and the same `API_KEY`, upload `device/` with Thonny, and set `main.py` to run on boot.
+3. Flash and configure the Core2: [docs/device-setup.md](docs/device-setup.md).
 
 Step-by-step instructions, routine tasks and a decommissioning checklist: [docs/operations.md](docs/operations.md).
 
@@ -153,7 +157,7 @@ backend/       Flask API: routes/, storage/ (SQLite, BigQuery), services/ (Gemin
 dashboard/     Streamlit dashboard: BigQuery and SQLite data sources, charts
 simulator/     Physics-based virtual device for demos and tests
 tests/         backend, dashboard, simulator and MicroPython firmware tests
-docs/          design document, operations guide, user manual
+docs/          design document, device setup, operations guide, user manual
 assets/        images and recordings used in this README
 ```
 

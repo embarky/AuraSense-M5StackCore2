@@ -6,7 +6,7 @@
 2. On the VM: clone the repository, copy `.env.example` to `.env`, fill in every value under "Cloud deployment", and put the service-account key at `GCP_CREDENTIALS_PATH`.
 3. `docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d --build`
 4. Put the backend behind an HTTPS reverse proxy; open only the ports you need.
-5. Flash the device with `device/config.py` pointing to the server and containing the same `API_KEY`.
+5. Flash the device with `device/config.py` pointing to the server and containing the same `API_KEY` ([device-setup.md](device-setup.md)).
 
 ## Routine tasks
 
