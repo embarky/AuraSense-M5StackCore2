@@ -9,13 +9,12 @@
 **See the air you breathe.** An end-to-end IoT system that measures indoor air quality on an ESP32 device, raises light and voice alerts when the air gets bad, answers spoken questions with an LLM, and keeps the history in the cloud for a web dashboard.
 
 <p align="center">
-  <a href="https://youtu.be/Kg4_3pkiIR8"><img src="assets/product-video-thumbnail.jpg" width="720" alt="Watch the 70-second AuraSense product video on YouTube"></a>
+  <a href="https://www.youtube.com/watch?v=Kg4_3pkiIR8"><img src="assets/product-video-thumbnail.jpg" width="720" alt="Watch the 70-second AuraSense product video on YouTube"></a>
   <br><sub><b>▶ Watch the 70-second product video</b> — real device, real voice alerts and assistant answers, English subtitles.</sub>
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/Kg4_3pkiIR8"><b>▶ Product video</b></a> ·
-  <a href="https://www.youtube.com/watch?v=83zbSBvbl1c">Course demo (7 min)</a> ·
+  <a href="https://www.youtube.com/watch?v=Kg4_3pkiIR8"><b>▶ Product video</b></a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/design.md">Design document</a> ·
   <a href="docs/user-manual.pdf">User manual</a>
@@ -27,7 +26,7 @@
 
 - **Edge to cloud, end to end** — MicroPython firmware on an M5Stack Core2, a Flask API, BigQuery storage and a Streamlit dashboard, deployed with Docker on Google Cloud.
 - **Alerts that work offline** — temperature, humidity, pressure, eCO₂, TVOC and motion read every 3 s; two-level LED alerts are decided on the device, and spoken alerts fire after 10 s at danger level, even with the screen off.
-- **Voice assistant** — hold a button and ask; Gemini transcribes and answers in one multimodal call with the last 24 hours of data as context, and Edge TTS speaks the reply (≈6–8 s round trip in the course demo).
+- **Voice assistant** — hold a button and ask; Gemini transcribes and answers in one multimodal call with the last 24 hours of data as context, and Edge TTS speaks the reply (≈6–8 s round trip, measured on the device).
 - **Runs anywhere with one command** — `docker compose up` starts the backend, dashboard and a physics-based virtual device. No hardware, API keys or cloud account needed.
 - **Tested down to the firmware** — 77 automated tests, including firmware tests executed on the MicroPython interpreter; CI builds the images and checks the full demo on every push.
 

@@ -65,7 +65,7 @@ flowchart LR
 
 **Data flow of one reading.** The device reads every sensor every 3 s and uploads every 30 s (every 5 s while an alert is active, immediately when a danger alert fires). The backend stores the reading, refreshes the cached outdoor weather for the device's location, starts a background AI-advice job at most every 10 minutes, and replies with outdoor conditions and the DST-aware UTC offset, which the device uses for its clock.
 
-**Voice request.** The device records while button C is held, uploads the WAV file, and plays the WAV reply. The backend sends the audio and a 24-hour data summary to Gemini in one multimodal request, extracts the transcript and answer from the structured reply, synthesises speech and resamples it to the 16 kHz mono format the Core2 speaker expects. During the course demo a round trip took about 6–8 seconds.
+**Voice request.** The device records while button C is held, uploads the WAV file, and plays the WAV reply. The backend sends the audio and a 24-hour data summary to Gemini in one multimodal request, extracts the transcript and answer from the structured reply, synthesises speech and resamples it to the 16 kHz mono format the Core2 speaker expects. Measured on the device, a round trip took about 6–8 seconds.
 
 ## 4. API
 
@@ -146,7 +146,7 @@ A shared API key on every endpoint (constant-time comparison), per-client rate l
 
 * **Automated tests (77)** — backend (50), dashboard (13), simulator (9), firmware (5, run on the MicroPython interpreter with the M5Stack modules stubbed, plus compilation of every firmware file with `mpy-cross`). The v2 fixes that can be reproduced in a test (§6.4, §6.7, §6.8 and the API issues in §5.8) were each re-introduced to confirm that a test fails; the multi-worker issue (§6.5) is a deployment property and is addressed by configuration.
 * **CI** — lint, secret scan, all test suites, Docker image builds, and an end-to-end check that `docker compose up` delivers simulated data to the dashboard.
-* **Hardware** — v1 was tested on the device throughout the course (see the demo video). v2 firmware changes are small and covered by the MicroPython tests, but have not been re-run on hardware.
+* **Hardware** — v1 was tested on the device throughout the course (see the [product video](https://www.youtube.com/watch?v=Kg4_3pkiIR8)). v2 firmware changes are small and covered by the MicroPython tests, but have not been re-run on hardware.
 
 ## 8. Operations and cost
 
