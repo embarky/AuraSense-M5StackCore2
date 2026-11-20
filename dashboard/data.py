@@ -20,7 +20,10 @@ import pandas as pd
 import requests
 from google.cloud import bigquery
 
-from anomalies import THRESH, classify_anomalies
+from anomalies import THRESH, anomaly_episodes
+
+# Readings beyond a threshold fetched per query (newest first), grouped into episodes
+ANOMALY_ROW_LIMIT = 20000
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -187,7 +190,7 @@ def get_motion_heatmap(days: int = 7) -> pd.DataFrame:
 # ── Anomaly detection ─────────────────────────────────────────────────────────
 
 def get_anomalies(days: int = 1) -> pd.DataFrame:
-    """Returns dataframe with: timestamp, type, level, value"""
+    """Anomaly episodes of the last `days` days (see anomalies.anomaly_episodes)."""
     query = f"""
         SELECT timestamp, eco2, tvoc, humidity
         FROM `{TABLE_ID}`
@@ -200,7 +203,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
             OR humidity > {THRESH["hum_high_warn"]}
           )
         ORDER BY timestamp DESC
-        LIMIT 200
+        LIMIT {ANOMALY_ROW_LIMIT}
     """
     try:
         df = _run(query, days=days)
@@ -208,7 +211,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
             return df
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
-        return classify_anomalies(df)
+        return anomaly_episodes(df)
 
     except Exception as e:
         print(f"[AuraSense | Data] get_anomalies error: {e}")
@@ -236,14 +239,14 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
             OR humidity > {THRESH["hum_high_warn"]}
           )
         ORDER BY timestamp DESC
-        LIMIT 500
+        LIMIT {ANOMALY_ROW_LIMIT}
     """
     try:
         df = _run(query, start_ts=start_dt, end_ts=end_dt)
         if df.empty: return df
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_convert("Europe/Zurich")
 
-        return classify_anomalies(df)
+        return anomaly_episodes(df)
     except Exception as e:
         print(f"[AuraSense | Data] get_anomalies_by_dates error: {e}")
         return pd.DataFrame()

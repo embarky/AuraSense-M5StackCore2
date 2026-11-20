@@ -1,0 +1,8 @@
+# Streamlit settings for the AuraSense dashboard
+
+[client]
+# Hide the "Deploy" button and developer menu items
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
