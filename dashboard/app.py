@@ -78,7 +78,7 @@ def sparkline(series, color="#378ADD"):
         xaxis=dict(visible=False), yaxis=dict(visible=False), 
         showlegend=False, hovermode=False
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 # ── 1. Top Section (Real-time Auto-Refreshing Fragment) ───────────────────────
@@ -372,12 +372,12 @@ with col_anom:
             if total_pages > 1:
                 p1, p2, p3 = st.columns([1, 2, 1])
                 with p1:
-                    if st.button("← Prev", disabled=st.session_state.anom_page == 0, use_container_width=True):
+                    if st.button("← Prev", disabled=st.session_state.anom_page == 0, width="stretch"):
                         st.session_state.anom_page -= 1; st.rerun()
                 with p2:
                     st.markdown(f"<div style='text-align:center; color:#888; margin-top:8px;'>Page {st.session_state.anom_page + 1} / {total_pages}</div>", unsafe_allow_html=True)
                 with p3:
-                    if st.button("Next →", disabled=st.session_state.anom_page >= total_pages - 1, use_container_width=True):
+                    if st.button("Next →", disabled=st.session_state.anom_page >= total_pages - 1, width="stretch"):
                         st.session_state.anom_page += 1; st.rerun()
 
 # ── 3. Trend Analysis ─────────────────────────────────────────────────────────
@@ -393,10 +393,10 @@ df_hist = get_history(trend_hours)
 
 ch1, ch2 = st.columns(2)
 with ch1:
-    st.plotly_chart(temp_humidity_chart(df_hist), use_container_width=True, config={"displayModeBar": False}, key="th_c")
+    st.plotly_chart(temp_humidity_chart(df_hist), width="stretch", config={"displayModeBar": False}, key="th_c")
 
 with ch2:
-    st.plotly_chart(co2_tvoc_chart(df_hist), use_container_width=True, config={"displayModeBar": False}, key="c2_c")
+    st.plotly_chart(co2_tvoc_chart(df_hist), width="stretch", config={"displayModeBar": False}, key="c2_c")
 
 # ── 4. Long-term Insights ─────────────────────────────────────────────────────
 
@@ -409,6 +409,6 @@ if df_daily.empty and df_motion.empty:
 else:
     h1, h2 = st.columns(2)
     with h1:
-        st.plotly_chart(daily_temp_chart(df_daily), use_container_width=True, config={"displayModeBar": False}, key="dt_c")
+        st.plotly_chart(daily_temp_chart(df_daily), width="stretch", config={"displayModeBar": False}, key="dt_c")
     with h2:
-        st.plotly_chart(motion_heatmap_chart(df_motion), use_container_width=True, config={"displayModeBar": False}, key="mh_c")
+        st.plotly_chart(motion_heatmap_chart(df_motion), width="stretch", config={"displayModeBar": False}, key="mh_c")
