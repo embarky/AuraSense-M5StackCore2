@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Added
-- 70-second product video on YouTube, linked at the top of the README
+- 70-second product video on YouTube, linked at the top of the README; replaces the 7-minute course demo video
 
 ### Fixed
 - Air-pressure card labelled normal readings at Lausanne's altitude as "Unusual"; it now shows the 3-hour trend
