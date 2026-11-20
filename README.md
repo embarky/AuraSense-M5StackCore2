@@ -189,12 +189,7 @@ See [CHANGELOG.md](CHANGELOG.md). Known limitations, such as eCO₂ being an est
 
 ## Team
 
-| Member | Contributions |
-|--------|--------------|
-| **Hang Yang** | v1: device firmware (sensors, LED alerts, screen management, voice assistant, WiFi resilience), Flask backend (API, Gemini, TTS, BigQuery, weather), Docker deployment on GCP. v2: all post-course changes listed above. |
-| **Yi Huang** | v1: Streamlit dashboard (real-time overview, sparklines, outdoor weather card, anomaly log, trend analysis, historical insights, AI advice, online/offline detection). |
-
-Built for *Cloud and Advanced Analytics*, University of Lausanne, 2026.
+v1.0 was built by **Hang Yang** and **Yi Huang** as a course project for *Cloud and Advanced Analytics* at the University of Lausanne (2026). The post-course work in v2.0 is by Hang Yang.
 
 ## Acknowledgements
 
