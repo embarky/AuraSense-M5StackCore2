@@ -200,4 +200,4 @@ Built for *Cloud and Advanced Analytics*, University of Lausanne, 2026.
 
 ## License
 
-[MIT](LICENSE)
+Released under the [MIT License](LICENSE) © 2026 Hang Yang and Yi Huang.
