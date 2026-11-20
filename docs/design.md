@@ -144,7 +144,7 @@ A shared API key on every endpoint (constant-time comparison), per-client rate l
 
 ## 7. Verification
 
-* **Automated tests (77)** — backend (50), dashboard (13), simulator (9), firmware (5, run on the MicroPython interpreter with the M5Stack modules stubbed, plus compilation of every firmware file with `mpy-cross`). The v2 fixes that can be reproduced in a test (§6.4, §6.7, §6.8 and the API issues in §5.8) were each re-introduced to confirm that a test fails; the multi-worker issue (§6.5) is a deployment property and is addressed by configuration.
+* **Automated tests (83)** — backend (52), dashboard (17), simulator (9), firmware (5, run on the MicroPython interpreter with the M5Stack modules stubbed, plus compilation of every firmware file with `mpy-cross`). The v2 fixes that can be reproduced in a test (§6.4, §6.7, §6.8 and the API issues in §5.8) were each re-introduced to confirm that a test fails; the multi-worker issue (§6.5) is a deployment property and is addressed by configuration.
 * **CI** — lint, secret scan, all test suites, Docker image builds, and an end-to-end check that `docker compose up` delivers simulated data to the dashboard.
 * **Hardware** — v1 was tested on the device throughout the course (see the [product video](https://www.youtube.com/watch?v=Kg4_3pkiIR8)). v2 firmware changes are small and covered by the MicroPython tests, but have not been re-run on hardware.
 

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/embarky/AuraSense-M5StackCore2/actions/workflows/ci.yml/badge.svg)](https://github.com/embarky/AuraSense-M5StackCore2/actions/workflows/ci.yml)
 ![MicroPython](https://img.shields.io/badge/device-MicroPython%20·%20ESP32-2b2728)
-![Python](https://img.shields.io/badge/backend-Python%203.11%20·%20Flask-3776AB)
+![Python](https://img.shields.io/badge/backend-Python%203.11%20|%203.13%20·%20Flask-3776AB)
 ![Docker](https://img.shields.io/badge/deploy-Docker%20Compose-2496ED)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -28,7 +28,7 @@
 - **Alerts that work offline** — temperature, humidity, pressure, eCO₂, TVOC and motion read every 3 s; two-level LED alerts are decided on the device, and spoken alerts fire after 10 s at danger level, even with the screen off.
 - **Voice assistant** — hold a button and ask; Gemini transcribes and answers in one multimodal call with the last 24 hours of data as context, and Edge TTS speaks the reply (≈6–8 s round trip, measured on the device).
 - **Runs anywhere with one command** — `docker compose up` starts the backend, dashboard and a physics-based virtual device. No hardware, API keys or cloud account needed.
-- **Tested down to the firmware** — 77 automated tests, including firmware tests executed on the MicroPython interpreter; CI builds the images and checks the full demo on every push.
+- **Tested down to the firmware** — 83 automated tests, including firmware tests executed on the MicroPython interpreter; CI builds the images and checks the full demo on every push.
 
 ## The device
 
@@ -171,8 +171,8 @@ tests/device/run_device_tests.sh        # needs micropython + mpy-cross
 
 | Suite | Covers |
 |-------|--------|
-| `tests/backend` (50) | Authentication and rate limiting, ingestion and batch validation, query bounds, per-device voice history, storage, provider selection |
-| `tests/dashboard` (13) | Anomaly rules and every dashboard view on a database filled by the simulator |
+| `tests/backend` (52) | Authentication and rate limiting, ingestion and batch validation, query bounds, per-device voice history, storage, provider selection |
+| `tests/dashboard` (17) | Anomaly rules and every dashboard view on a database filled by the simulator |
 | `tests/simulator` (9) | Physical plausibility, occupancy patterns, scenarios, determinism |
 | `tests/device` (5) | Firmware compiled with the MicroPython compiler and executed on MicroPython with the hardware modules stubbed |
 
@@ -183,7 +183,7 @@ tests/device/run_device_tests.sh        # needs micropython + mpy-cross
 | Version | When | What |
 |---|---|---|
 | **v1.0** | May 2026 | Course project (team of two): firmware, Flask backend, BigQuery, Streamlit dashboard, deployed on Google Cloud and demonstrated on the device. Cloud resources were shut down after the course. |
-| **v2.0** | Nov 2026 | Post-course work by Hang Yang: security clean-up (API authentication, secrets removed from history), concurrency, timezone and query fixes, pluggable providers with a one-command local demo, device simulator, 77 tests and CI, documentation. |
+| **v2.0** | Nov 2026 | Post-course work by Hang Yang: security clean-up (API authentication, secrets removed from history), concurrency, timezone and query fixes, pluggable providers with a one-command local demo, device simulator, 83 tests and CI, documentation. |
 
 See [CHANGELOG.md](CHANGELOG.md). Known limitations, such as eCO₂ being an estimate rather than an NDIR CO₂ measurement, are listed in [design.md §9](docs/design.md#9-limitations-and-future-work).
 
