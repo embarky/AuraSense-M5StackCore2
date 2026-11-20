@@ -45,7 +45,6 @@ def wifi_connect(status_cb=None) -> bool:
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     
-    # 🌟 GHOST CONNECTION CRUSHER: 
     # Force a disconnect to clear any half-open states in the router
     # caused by a previous Watchdog hardware reset.
     try:
@@ -133,7 +132,7 @@ def upload_sensor_data(sensor_data: dict):
         except Exception:
             err_code = 0
             
-        # 🌟 SOFTWARE WATCHDOG TRIGGER
+        # Software watchdog: reset the device when the network stack is stuck.
         # 12 = ENOMEM, 105 = ENOBUFS (Internal SRAM exhausted)
         if err_code in (12, 105) or _consecutive_upload_fails >= 15:
             print("=========================================")

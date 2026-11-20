@@ -1,7 +1,8 @@
 """
-dashboard/app.py — AuraSense Streamlit dashboard (Final Production Version).
+dashboard/app.py — AuraSense Streamlit dashboard.
 "AuraSense: See the air you breathe."
 """
+import logging
 import time
 import datetime
 import requests
@@ -31,7 +32,7 @@ def fetch_flask_forecast():
             if res.get("status") == "success":
                 return res.get("forecast", [])
     except Exception as e:
-        print(f"[app] Error fetching forecast: {e}")
+        logging.getLogger(__name__).warning("Forecast request failed: %s", e)
     return []
 
 # ── Page Configuration ────────────────────────────────────────────────────────

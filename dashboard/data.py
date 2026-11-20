@@ -12,6 +12,7 @@ Defaults to BigQuery when GCP_PROJECT is set, otherwise SQLite.
 """
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -21,6 +22,8 @@ import requests
 from google.cloud import bigquery
 
 from anomalies import THRESH, anomaly_episodes
+
+log = logging.getLogger(__name__)
 
 # Readings beyond a threshold fetched per query (newest first), grouped into episodes
 ANOMALY_ROW_LIMIT = 20000
@@ -77,7 +80,7 @@ def get_current_status() -> dict:
         if r.status_code == 200:
             return r.json()
     except requests.exceptions.RequestException as e:
-        print(f"[AuraSense | Data] Live backend offline: {e}")
+        log.info("Live backend unreachable: %s", e)
         pass
     
     return {} 
@@ -105,7 +108,7 @@ def get_last_known_context() -> dict:
                 "location": row.get("location", "Unknown Location")
             }
     except Exception as e:
-        print(f"[AuraSense | Data] get_last_known_context error: {e}")
+        log.warning("get_last_known_context failed: %s", e)
     
     return {}
 
@@ -136,7 +139,7 @@ def get_history(hours: int = 24) -> pd.DataFrame:
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         return df
     except Exception as e:
-        print(f"[AuraSense | Data] get_history error: {e}")
+        log.warning("get_history failed: %s", e)
         return pd.DataFrame()
 
 
@@ -164,7 +167,7 @@ def get_daily_aggregates(days: int = 7) -> pd.DataFrame:
             df["date"] = pd.to_datetime(df["date"])
         return df
     except Exception as e:
-        print(f"[AuraSense | Data] get_daily_aggregates error: {e}")
+        log.warning("get_daily_aggregates failed: %s", e)
         return pd.DataFrame()
 
 
@@ -183,7 +186,7 @@ def get_motion_heatmap(days: int = 7) -> pd.DataFrame:
     try:
         return _run(query, days=days)
     except Exception as e:
-        print(f"[AuraSense | Data] get_motion_heatmap error: {e}")
+        log.warning("get_motion_heatmap failed: %s", e)
         return pd.DataFrame()
 
 
@@ -214,7 +217,7 @@ def get_anomalies(days: int = 1) -> pd.DataFrame:
         return anomaly_episodes(df)
 
     except Exception as e:
-        print(f"[AuraSense | Data] get_anomalies error: {e}")
+        log.warning("get_anomalies failed: %s", e)
         return pd.DataFrame()
     
 
@@ -248,7 +251,7 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
 
         return anomaly_episodes(df)
     except Exception as e:
-        print(f"[AuraSense | Data] get_anomalies_by_dates error: {e}")
+        log.warning("get_anomalies_by_dates failed: %s", e)
         return pd.DataFrame()
 
 
@@ -283,7 +286,7 @@ def get_co2_peak_stats(hours: int = 24) -> dict:
             "mins_above_1500": int(row["mins_above_1500"]) if pd.notna(row["mins_above_1500"]) else 0,
         }
     except Exception as e:
-        print(f"[AuraSense | Data] get_co2_peak_stats error: {e}")
+        log.warning("get_co2_peak_stats failed: %s", e)
         return {"peak": 0, "avg": 0, "peak_time": None, "mins_above_800": 0, "mins_above_1500": 0}
 
 
