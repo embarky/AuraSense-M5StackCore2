@@ -13,7 +13,8 @@ from data import (
     API_KEY, FLASK_URL, get_current_status, get_last_known_context, get_history, 
     get_daily_aggregates, get_motion_heatmap, get_anomalies, get_anomalies_by_dates, THRESH
 )
-from indicators import pressure_trend
+from indicators import comfort_level, pressure_trend
+from anomalies import EPISODE_GAP
 from charts import (
     temp_humidity_chart, co2_tvoc_chart, daily_temp_chart, motion_heatmap_chart
 )
@@ -48,6 +49,7 @@ st.markdown("""
 <style>
   .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 1400px; }
   .section-label { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #6c757d; margin-top: 1.5rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
+  .anomaly-danger, .anomaly-warning { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; }
   .anomaly-danger { background: #fff0f0; border-left: 4px solid #ff4b4b; padding: 8px 12px; margin-bottom: 8px; border-radius: 4px; color: #a32d2d; font-size: 13px; }
   .anomaly-warning { background: #fff8e6; border-left: 4px solid #ffc107; padding: 8px 12px; margin-bottom: 8px; border-radius: 4px; color: #854f0b; font-size: 13px; }
   [data-testid="stMetricValue"] { font-size: 2.2rem !important; font-weight: 700 !important; color: #1f2937; }
@@ -130,9 +132,10 @@ def render_live_dashboard():
         if not is_online:
             st.caption("Sensor offline")
         else:
-            level = current_metrics.get("comfort_level", "Normal comfort")
-            icon = "🟢" if level in ("Comfortable", "Acceptable") else ("🟡" if level in ("Too Dry", "Too Humid") else "🔴")
-            st.caption(f"{icon} {level}")
+            level = current_metrics.get("comfort_level") or comfort_level(temp, hum)
+            if level and level != "N/A":
+                icon = "🟢" if level in ("Comfortable", "Acceptable") else "🟡"
+                st.caption(f"{icon} {level}")
 
     with r1c2:
         st.metric("💧 Humidity", f"{round(hum,0):.0f} %" if hum is not None else "—")
@@ -345,9 +348,15 @@ with col_anom:
             else:
                 st.markdown("<div style='color:#6c757d; font-size: 14px; margin-top: 15px;'>📴 No anomaly records available for this filtered context.</div>", unsafe_allow_html=True)
         else:
-            danger_count  = len(df_raw_anom[df_raw_anom["level"] == "danger"])
-            warning_count = len(df_raw_anom[df_raw_anom["level"] == "warning"])
-            st.markdown(f"<div style='font-size: 13px; color: #555; margin-top: 10px;'>Filtered Result: <b>{danger_count}</b> critical and <b>{warning_count}</b> warnings out of {len(df_raw_anom)} events.</div>", unsafe_allow_html=True)
+            danger_count  = int((df_raw_anom["level"] == "danger").sum())
+            warning_count = int((df_raw_anom["level"] == "warning").sum())
+            n_episodes, n_readings = len(df_raw_anom), int(df_raw_anom["readings"].sum())
+            st.markdown(
+                f"<div style='font-size: 13px; color: #555; margin-top: 10px;'>"
+                f"<b>{n_episodes}</b> episode{'s' if n_episodes != 1 else ''}: <b>{danger_count}</b> critical, "
+                f"<b>{warning_count}</b> warning{'s' if warning_count != 1 else ''} "
+                f"<span style='color:#999;'>({n_readings:,} readings beyond a threshold)</span></div>",
+                unsafe_allow_html=True)
 
             page_size = 4  
             total_pages = max(1, (len(df_raw_anom) + page_size - 1) // page_size)
@@ -357,15 +366,35 @@ with col_anom:
             start = st.session_state.anom_page * page_size
             page_df = df_raw_anom.iloc[start:start + page_size]
 
+            now_local = pd.Timestamp.now(tz="Europe/Zurich")
             for _, row in page_df.iterrows():
-                ts = pd.to_datetime(row["timestamp"])
-                ts_str = ts.strftime("%H:%M:%S") if anom_range == "Today" else ts.strftime("%b %d, %H:%M:%S")
-                    
-                css  = "anomaly-danger" if row["level"] == "danger" else "anomaly-warning"
-                icon = "🚨" if row["level"] == "danger" else "⚠️"
+                start, end = pd.to_datetime(row["start"]), pd.to_datetime(row["end"])
+                live_value = {"CO2": current_metrics.get("eco2"), "TVOC": current_metrics.get("tvoc")}.get(
+                    row["type"], current_metrics.get("indoor_hum"))
+                still_beyond = live_value is not None and (
+                    live_value < THRESH["hum_low_warn"] if row["type"] == "Humidity low"
+                    else live_value > {"CO2": THRESH["eco2_warning"], "TVOC": THRESH["tvoc_warning"]}.get(
+                        row["type"], THRESH["hum_high_warn"]))
+                ongoing = (is_online and still_beyond and end.tz is not None
+                           and now_local - end <= EPISODE_GAP)
+                fmt = "%H:%M" if anom_range == "Today" else "%b %d, %H:%M"
+                if ongoing:
+                    when = f"since {start.strftime(fmt)} · ongoing"
+                elif end - start < pd.Timedelta(minutes=1):
+                    when = start.strftime(fmt)
+                else:
+                    minutes = int(round((end - start).total_seconds() / 60))
+                    span = f"{minutes} min" if minutes < 120 else f"{minutes / 60:.1f} h"
+                    end_fmt = "%H:%M" if start.date() == end.date() else fmt
+                    when = f"{start.strftime(fmt)}–{end.strftime(end_fmt)} · {span}"
+
+                css   = "anomaly-danger" if row["level"] == "danger" else "anomaly-warning"
+                icon  = "🚨" if row["level"] == "danger" else "⚠️"
+                label = row["type"] if row["type"].startswith("Humidity") else f'{row["type"]} {row["level"]}'
+                peak  = "lowest" if row["type"] == "Humidity low" else "peak"
                 st.markdown(
-                    f'<div class="{css}"><b>{icon} {row["type"]}</b> : {row["value"]}'
-                    f'<span style="float:right; opacity:0.7; font-family: monospace;">{ts_str}</span></div>',
+                    f'<div class="{css}"><span><b>{icon} {label}</b> · {peak} {row["value"]}</span>'
+                    f'<span style="opacity:0.75; font-family: monospace;">{when}</span></div>',
                     unsafe_allow_html=True
                 )
 

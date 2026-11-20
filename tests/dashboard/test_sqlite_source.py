@@ -37,17 +37,19 @@ def test_motion_heatmap(source):
 
 def test_anomaly_logs(source):
     a = source.get_anomalies(7)
-    assert list(a.columns) == ["timestamp", "type", "level", "value"]
-    assert str(a["timestamp"].dt.tz) == "Europe/Zurich"
+    assert list(a.columns) == ["start", "end", "type", "level", "peak", "value", "readings"]
+    assert str(a["start"].dt.tz) == "Europe/Zurich"
     assert set(a["level"]) <= {"warning", "danger"}
-    # like the BigQuery query: at most the 200 newest anomalous readings, each
-    # producing one entry per metric that is out of range
-    assert 200 <= len(a) <= 200 * 4
+    assert (a["end"] >= a["start"]).all()
+    # a week of simulated data has many readings above a threshold but far
+    # fewer episodes: the log no longer lists every reading
+    assert 0 < len(a) < a["readings"].sum() / 5
+    assert list(a["end"]) == sorted(a["end"], reverse=True)
 
     end = datetime.now()
     window = source.get_anomalies_by_dates(end - timedelta(hours=6), end)
     if not window.empty:
-        assert window["timestamp"].min() >= pd.Timestamp(end - timedelta(hours=6), tz="Europe/Zurich")
+        assert window["start"].min() >= pd.Timestamp(end - timedelta(hours=6), tz="Europe/Zurich")
 
 
 def test_co2_peak_stats(source):

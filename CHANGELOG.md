@@ -21,6 +21,7 @@ Post-course improvements (Hang Yang).
 - Private-IP detection treated public `172.x` addresses as Docker-internal
 - Dashboard date-range filter interpreted Zurich time as UTC
 - Dashboard weather card failed once API authentication was enabled
+- Temperature card showed a red "Normal comfort" when a reading arrived without a comfort level; the dashboard now derives it with the firmware's rules
 
 ### Added
 - Device setup guide (docs/device-setup.md): flashing UIFlow 2, configuration, upload, troubleshooting
@@ -28,12 +29,14 @@ Post-course improvements (Hang Yang).
 - Pluggable providers: SQLite or BigQuery, Gemini or rule-based AI, OpenWeatherMap or synthetic weather, Edge TTS or chime
 - One-command local demo (`docker compose up`) with a physics-based device simulator
 - Batch ingestion endpoint and optional measurement timestamps
-- 83 tests (backend, dashboard, simulator, MicroPython firmware) and GitHub Actions CI with a Docker end-to-end check
+- 89 tests (backend, dashboard, simulator, MicroPython firmware) and GitHub Actions CI with a Docker end-to-end check
 - Design document, operations guide, new README with real device media
 
 ### Changed
 - Pinned dependency versions
 - Logging instead of print statements
+- Anomaly log lists episodes (start, end, duration, peak) instead of one entry per reading: hundreds of readings above a threshold in a day become a handful of episodes
+- Streamlit toolbar reduced to the viewer menu (no "Deploy" button); threshold labels on the air-quality chart stay readable over the data
 - Dashboard uses Streamlit's `width` argument instead of the deprecated `use_container_width`
 
 ## v1.0 — May 2026

@@ -29,3 +29,14 @@ def test_not_enough_history():
     assert pressure_trend(_history([960, 961, 962])) == "⚪ Trend available after 3 h"
     assert pressure_trend(pd.DataFrame()) == "⚪ Trend available after 3 h"
     assert pressure_trend(_history([None] * 30)) == "⚪ Trend available after 3 h"
+
+
+def test_comfort_level_matches_the_firmware_rules():
+    from indicators import comfort_level
+    assert comfort_level(20.5, 40) == "Comfortable"
+    assert comfort_level(25.5, 50) == "Acceptable"
+    assert comfort_level(20, 25) == "Too Dry"
+    assert comfort_level(20, 75) == "Too Humid"
+    assert comfort_level(16, 45) == "Too Cold"
+    assert comfort_level(30, 45) == "Too Warm"
+    assert comfort_level(None, 45) is None

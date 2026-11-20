@@ -39,3 +39,26 @@ def pressure_trend(history: pd.DataFrame) -> str:
     if abs(change) < PRESSURE_FAST_HPA:
         return f"🟡 {direction} ({change:+.1f} hPa / 3 h)"
     return f"🟠 {direction} fast ({change:+.1f} hPa / 3 h)"
+
+
+def comfort_level(temperature, humidity) -> str | None:
+    """
+    Comfort class from temperature (°C) and relative humidity (%), the same
+    rules as the device firmware (device/sensors.py → calc_comfort), so the
+    dashboard can show it for data that arrives without it, such as the
+    simulator's readings.
+    """
+    if temperature is None or humidity is None or pd.isna(temperature) or pd.isna(humidity):
+        return None
+    t, h = float(temperature), float(humidity)
+    if h < 30:
+        return "Too Dry"
+    if h > 70:
+        return "Too Humid"
+    if t < 18:
+        return "Too Cold"
+    if t > 28:
+        return "Too Warm"
+    if 18 <= t <= 24 and 30 <= h <= 60:
+        return "Comfortable"
+    return "Acceptable"

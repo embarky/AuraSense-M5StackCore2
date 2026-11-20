@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from anomalies import classify_anomalies, is_anomalous, THRESH
+from anomalies import anomaly_episodes, is_anomalous, THRESH
 
 log = logging.getLogger(__name__)
 
@@ -113,6 +113,11 @@ def get_motion_heatmap(days: int = 7) -> pd.DataFrame:
     return out.sort_values("hour").reset_index(drop=True)
 
 
+# Readings beyond a threshold fetched per query, newest first. Enough for a
+# 30-day window at the device's normal upload rate; grouped into episodes.
+ANOMALY_ROW_LIMIT = 20000
+
+
 def _anomaly_log(df: pd.DataFrame, limit: int) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
@@ -121,11 +126,11 @@ def _anomaly_log(df: pd.DataFrame, limit: int) -> pd.DataFrame:
         return pd.DataFrame()
     df = df[["timestamp", "eco2", "tvoc", "humidity"]].copy()
     df["timestamp"] = df["timestamp"].dt.tz_convert(LOCAL_TZ)
-    return classify_anomalies(df)
+    return anomaly_episodes(df)
 
 
 def get_anomalies(days: int = 1) -> pd.DataFrame:
-    return _anomaly_log(_load(_since(days=int(days))), limit=200)
+    return _anomaly_log(_load(_since(days=int(days))), limit=ANOMALY_ROW_LIMIT)
 
 
 def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
@@ -133,7 +138,7 @@ def get_anomalies_by_dates(start_dt, end_dt) -> pd.DataFrame:
         start_dt = start_dt.replace(tzinfo=LOCAL_TZ)
     if end_dt.tzinfo is None:
         end_dt = end_dt.replace(tzinfo=LOCAL_TZ)
-    return _anomaly_log(_load(start_dt, end_dt), limit=500)
+    return _anomaly_log(_load(start_dt, end_dt), limit=ANOMALY_ROW_LIMIT)
 
 
 def get_co2_peak_stats(hours: int = 24) -> dict:

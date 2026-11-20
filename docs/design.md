@@ -118,7 +118,7 @@ Each decision lists the choice, the main alternative, and the consequences we ac
 | Danger | > 1500 ppm | > 660 ppb | < 20 % or > 75 % | red, 250 ms flash | after 10 s, then every 30 s |
 
 **Choice.** Thresholds are evaluated on the device, so LED alerts work without a network. Spoken alerts start only after the danger level has persisted for 10 seconds, which filters out short spikes, and they repeat every 30 s while it lasts, even with the screen off.
-**Consequences.** Alerting does not depend on the cloud. The same thresholds are duplicated in firmware and dashboard (`dashboard/anomalies.py`), so they must be changed together.
+**Consequences.** Alerting does not depend on the cloud. The same thresholds are duplicated in firmware and dashboard (`dashboard/anomalies.py`), so they must be changed together. The dashboard groups consecutive readings beyond a threshold into episodes (readings less than 5 minutes apart belong to one episode) and lists each episode once, with its duration and peak, rather than one entry per reading.
 
 ### 5.7 Pluggable providers and a local demo (v2)
 **Choice.** Storage (SQLite / BigQuery), AI (rule-based / Gemini), weather (synthetic / OpenWeatherMap) and speech (chime / Edge TTS) are selected by configuration. Defaults follow the credentials that are present, so an existing cloud configuration keeps the real services and an empty one runs fully offline. A physics-based simulator replaces the device.
@@ -144,7 +144,7 @@ A shared API key on every endpoint (constant-time comparison), per-client rate l
 
 ## 7. Verification
 
-* **Automated tests (83)** — backend (52), dashboard (17), simulator (9), firmware (5, run on the MicroPython interpreter with the M5Stack modules stubbed, plus compilation of every firmware file with `mpy-cross`). The v2 fixes that can be reproduced in a test (§6.4, §6.7, §6.8 and the API issues in §5.8) were each re-introduced to confirm that a test fails; the multi-worker issue (§6.5) is a deployment property and is addressed by configuration.
+* **Automated tests (89)** — backend (52), dashboard (23), simulator (9), firmware (5, run on the MicroPython interpreter with the M5Stack modules stubbed, plus compilation of every firmware file with `mpy-cross`). The v2 fixes that can be reproduced in a test (§6.4, §6.7, §6.8 and the API issues in §5.8) were each re-introduced to confirm that a test fails; the multi-worker issue (§6.5) is a deployment property and is addressed by configuration.
 * **CI** — lint, secret scan, all test suites, Docker image builds, and an end-to-end check that `docker compose up` delivers simulated data to the dashboard.
 * **Hardware** — v1 was tested on the device throughout the course (see the [product video](https://www.youtube.com/watch?v=Kg4_3pkiIR8)). v2 firmware changes are small and covered by the MicroPython tests, but have not been re-run on hardware.
 

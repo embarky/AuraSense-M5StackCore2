@@ -97,11 +97,12 @@ def co2_tvoc_chart(df: pd.DataFrame) -> go.Figure:
 
     for y_line, color, label, pos in [
         (1500, C_RED, "Danger 1500", "top right"), 
-        (800, C_AMBER, "Warning 800", "bottom right")
+        (800, C_AMBER, "Warning 800", "top right")
     ]:
         fig.add_hline(y=y_line, line=dict(color=color, width=1, dash="dot"),
                       annotation_text=label, annotation_position=pos,
-                      annotation_font_size=10)
+                      annotation_font_size=10, annotation_font_color=color,
+                      annotation_bgcolor="rgba(255,255,255,0.85)")
 
     s_eco2 = df["eco2"].astype(float)
     s_tvoc = df["tvoc"].astype(float)
