@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Device setup guide (docs/device-setup.md): flashing UIFlow 2, configuration, upload, troubleshooting
 - 70-second product video on YouTube, linked at the top of the README; replaces the 7-minute course demo video
 
 ### Fixed
