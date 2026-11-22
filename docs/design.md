@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Authors** | Hang Yang, Yi Huang (v1, course project) · Hang Yang (v2) |
+| **Author** | Hang Yang (v1 was a course project with Yi Huang) |
 | **Context** | Cloud and Advanced Analytics, University of Lausanne, spring 2026 |
 | **Status** | v1 deployed on Google Cloud during the course (May 2026), then decommissioned. v2 runs locally with one command; cloud deployment is an optional override. |
 

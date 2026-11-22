@@ -187,9 +187,9 @@ tests/device/run_device_tests.sh        # needs micropython + mpy-cross
 
 See [CHANGELOG.md](CHANGELOG.md). Known limitations, such as eCO₂ being an estimate rather than an NDIR CO₂ measurement, are listed in [design.md §9](docs/design.md#9-limitations-and-future-work).
 
-## Team
+## Author
 
-v1.0 was built by **Hang Yang** and **Yi Huang** as a course project for *Cloud and Advanced Analytics* at the University of Lausanne (2026). The post-course work in v2.0 is by Hang Yang.
+Developed by **Hang Yang**. Version 1.0 started as a two-person course project with Yi Huang for *Cloud and Advanced Analytics* at the University of Lausanne (2026); all code in this repository, in v1.0 and v2.0, was written by Hang Yang.
 
 ## Acknowledgements
 
@@ -199,4 +199,4 @@ v1.0 was built by **Hang Yang** and **Yi Huang** as a course project for *Cloud 
 
 ## License
 
-Released under the [MIT License](LICENSE) © 2026 Hang Yang and Yi Huang.
+Released under the [MIT License](LICENSE) © 2026 Hang Yang.
