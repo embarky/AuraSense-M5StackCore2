@@ -17,6 +17,7 @@
   <a href="https://www.youtube.com/watch?v=Kg4_3pkiIR8"><b>▶ Product video</b></a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/design.md">Design document</a> ·
+  <a href="docs/device-setup.md">Device setup</a> ·
   <a href="docs/user-manual.pdf">User manual</a>
 </p>
 
@@ -24,7 +25,7 @@
 
 ## Highlights
 
-- **Edge to cloud, end to end** — MicroPython firmware on an M5Stack Core2, a Flask API, BigQuery storage and a Streamlit dashboard, deployed with Docker on Google Cloud.
+- **Edge to cloud, end to end** — MicroPython firmware on an M5Stack Core2, a Flask API, BigQuery storage and a Streamlit dashboard, deployed with Docker on Google Cloud during the course.
 - **Alerts that work offline** — temperature, humidity, pressure, eCO₂, TVOC and motion read every 3 s; two-level LED alerts are decided on the device, and spoken alerts fire after 10 s at danger level, even with the screen off.
 - **Voice assistant** — hold a button and ask; Gemini transcribes and answers in one multimodal call with the last 24 hours of data as context, and Edge TTS speaks the reply (≈6–8 s round trip, measured on the device).
 - **Runs anywhere with one command** — `docker compose up` starts the backend, dashboard and a physics-based virtual device. No hardware, API keys or cloud account needed.
