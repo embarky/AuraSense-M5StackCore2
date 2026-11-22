@@ -41,4 +41,4 @@ Post-course improvements (Hang Yang).
 
 ## v1.0 — May 2026
 
-Course project for *Cloud and Advanced Analytics*, University of Lausanne (Hang Yang, Yi Huang): M5Stack Core2 firmware with offline mode, LED and voice alerts and a voice assistant; Flask backend with Gemini, Edge TTS, OpenWeatherMap and BigQuery; Streamlit dashboard; Docker deployment on Google Cloud.
+Course project for *Cloud and Advanced Analytics*, University of Lausanne (course team: Hang Yang and Yi Huang; code by Hang Yang): M5Stack Core2 firmware with offline mode, LED and voice alerts and a voice assistant; Flask backend with Gemini, Edge TTS, OpenWeatherMap and BigQuery; Streamlit dashboard; Docker deployment on Google Cloud.
