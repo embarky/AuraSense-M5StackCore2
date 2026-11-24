@@ -9,12 +9,12 @@
 **See the air you breathe.** An end-to-end IoT system that measures indoor air quality on an ESP32 device, raises light and voice alerts when the air gets bad, answers spoken questions with an LLM, and keeps the history in the cloud for a web dashboard.
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=Kg4_3pkiIR8"><img src="assets/product-video-thumbnail.jpg" width="720" alt="Watch the 70-second AuraSense product video on YouTube"></a>
+  <a href="https://www.youtube.com/watch?v=-8rTBZ_OiJc"><img src="assets/product-video-thumbnail.jpg" width="720" alt="Watch the 70-second AuraSense product video on YouTube"></a>
   <br><sub><b>▶ Watch the 70-second product video</b> — real device, real voice alerts and assistant answers, English subtitles.</sub>
 </p>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=Kg4_3pkiIR8"><b>▶ Product video</b></a> ·
+  <a href="https://www.youtube.com/watch?v=-8rTBZ_OiJc"><b>▶ Product video</b></a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="docs/design.md">Design document</a> ·
   <a href="docs/device-setup.md">Device setup</a> ·
